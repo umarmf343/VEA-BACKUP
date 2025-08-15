@@ -1,8 +1,9 @@
 {
-  "name": "vea-portal-runtime",
-  "version": "0.1.0",
-  "private": true,
+  "engines": { "node": ">=18 <=22" },
   "scripts": {
-    "start": "node server.js"
+    "dev": "next dev",
+    "build": "next build",     // rename from "built" to "build"
+    "start": "next start",
+    "lint": "next lint"
   }
 }
