@@ -1,16 +1,26 @@
 // app/api/payments/initialize/route.ts
-// Purpose: Initialize a payment and return an authorization URL (mock/dev-safe).
+// Purpose: Initialize a Paystack payment (real call if key present) and return authorization URL.
 // Used by: components/payment-modal.tsx (POST /api/payments/initialize)
 //
-// Behavior:
-// - Validates { studentId, amount } from JSON body.
-// - Creates a "pending" payment record in the same in-memory DB used by /api/payments.
-// - Returns { authorization_url, reference }.
-// - Replace the mock URL with a real Paystack init call when keys are available.
+// Request JSON:
+//   {
+//     "studentId": "STU-1001",
+//     "amount": 15000,
+//     // optional, strongly recommended for real gateway calls:
+//     "email": "student@example.com",
+//     "callbackUrl": "https://yourapp.com/payments/callback" // optional
+//   }
 //
-// Production note:
-// - Swap the MOCK block with a real fetch to Paystack initialize endpoint.
-// - Store the returned reference and authorization_url; persist to your DB.
+// Behavior:
+// - If PAYSTACK_SECRET_KEY is set, calls Paystack's initialize API and returns its authorization_url + reference.
+// - If PAYSTACK_SECRET_KEY is NOT set (dev), returns a MOCK authorization_url and creates a pending record.
+// - Always persists a record in the same in-memory list used by /api/payments.
+//
+// ENV required for real calls:
+//   PAYSTACK_SECRET_KEY=sk_live_xxx (or test key)
+//   NEXT_PUBLIC_APP_URL=https://your-app.example (fallback for callback URL)
+//
+// NOTE: Replace the in-memory DB with your real persistence layer in production.
 
 import { NextResponse } from "next/server";
 
@@ -32,7 +42,6 @@ function ensureDB(): Payment[] {
 }
 
 function uid(prefix: string) {
-  // Prefer crypto.randomUUID when available
   const core =
     typeof crypto !== "undefined" && "randomUUID" in crypto
       ? crypto.randomUUID()
@@ -45,6 +54,8 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
     const studentId = String(body?.studentId ?? "").trim();
     const amount = Number(body?.amount);
+    const emailRaw = body?.email ? String(body.email).trim() : "";
+    const callbackUrlRaw = body?.callbackUrl ? String(body.callbackUrl).trim() : "";
 
     if (!studentId || !Number.isFinite(amount) || amount < 100) {
       return NextResponse.json(
@@ -53,12 +64,11 @@ export async function POST(req: Request) {
       );
     }
 
-    // Create a new payment entry (pending)
+    // Create or ensure DB record first (pending)
     const db = ensureDB();
     const reference = uid("REF");
     const id = uid("PMT");
     const now = new Date().toISOString();
-
     const payment: Payment = {
       id,
       studentId,
@@ -69,26 +79,61 @@ export async function POST(req: Request) {
     };
     db.push(payment);
 
-    // --- MOCK AUTH URL (dev) ---
-    // Replace with actual Paystack initialize call when ready.
-    // Example:
-    // const pk = process.env.PAYSTACK_SECRET_KEY!;
-    // const init = await fetch("https://api.paystack.co/transaction/initialize", {
-    //   method: "POST",
-    //   headers: {
-    //     Authorization: `Bearer ${pk}`,
-    //     "Content-Type": "application/json"
-    //   },
-    //   body: JSON.stringify({ email, amount: amount * 100, reference })
-    // }).then(r => r.json());
-    // const authorization_url = init?.data?.authorization_url;
+    const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY || "";
+    const NEXT_PUBLIC_APP_URL = process.env.NEXT_PUBLIC_APP_URL || "";
 
-    const authorization_url = `https://paystack.com/pay/demo-${reference}`;
+    // Fallbacks for missing optional fields
+    const email = emailRaw || `${studentId}@vea.local`;
+    const callback_url =
+      callbackUrlRaw ||
+      (NEXT_PUBLIC_APP_URL ? `${NEXT_PUBLIC_APP_URL.replace(/\/$/, "")}/payments/callback` : undefined);
 
-    return NextResponse.json(
-      { authorization_url, reference },
-      { status: 200 }
-    );
+    // If no secret key, return MOCK (dev)
+    if (!PAYSTACK_SECRET_KEY) {
+      const authorization_url = `https://paystack.com/pay/dev-${reference}`;
+      return NextResponse.json({ authorization_url, reference, id }, { status: 200 });
+    }
+
+    // Real Paystack initialize
+    const initPayload: Record<string, any> = {
+      email,
+      amount: payment.amount * 100, // kobo
+      reference,
+      metadata: {
+        studentId,
+        paymentId: id,
+      },
+    };
+    if (callback_url) initPayload.callback_url = callback_url;
+
+    const resp = await fetch("https://api.paystack.co/transaction/initialize", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(initPayload),
+    });
+
+    const result = await resp.json().catch(() => ({} as any));
+
+    if (!resp.ok || !result?.status) {
+      // Keep the record pending; surface gateway message if available
+      const msg =
+        (result?.message && String(result.message)) ||
+        `Paystack initialize failed (${resp.status})`;
+      return NextResponse.json({ message: msg }, { status: 502 });
+    }
+
+    const authorization_url = result?.data?.authorization_url;
+    if (!authorization_url) {
+      return NextResponse.json(
+        { message: "Paystack response missing authorization_url." },
+        { status: 502 }
+      );
+    }
+
+    return NextResponse.json({ authorization_url, reference, id }, { status: 200 });
   } catch (e: any) {
     return NextResponse.json(
       { message: e?.message || "Failed to initialize payment." },
