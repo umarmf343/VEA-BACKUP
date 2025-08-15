@@ -1,0 +1,11 @@
+Failed to fetch grades: TypeError: i.hY.getStudentGrades is not a function
+    at l (/home/baladre1/portal2.victoryeducationalacademy.com.ng/deploy/.next/standalone/.next/server/app/api/grades/route.js:1:667)
+    at /home/baladre1/portal2.victoryeducationalacademy.com.ng/deploy/.next/standalone/node_modules/next/dist/compiled/next-server/app-route.runtime.prod.js:6:37016
+    at /home/baladre1/portal2.victoryeducationalacademy.com.ng/deploy/.next/standalone/node_modules/next/dist/server/lib/trace/tracer.js:140:36
+    at NoopContextManager.with (/home/baladre1/portal2.victoryeducationalacademy.com.ng/deploy/.next/standalone/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:7062)
+    at ContextAPI.with (/home/baladre1/portal2.victoryeducationalacademy.com.ng/deploy/.next/standalone/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:518)
+    at NoopTracer.startActiveSpan (/home/baladre1/portal2.victoryeducationalacademy.com.ng/deploy/.next/standalone/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:18093)
+    at ProxyTracer.startActiveSpan (/home/baladre1/portal2.victoryeducationalacademy.com.ng/deploy/.next/standalone/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:18854)
+    at /home/baladre1/portal2.victoryeducationalacademy.com.ng/deploy/.next/standalone/node_modules/next/dist/server/lib/trace/tracer.js:122:103
+    at NoopContextManager.with (/home/baladre1/portal2.victoryeducationalacademy.com.ng/deploy/.next/standalone/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:7062)
+    at ContextAPI.with (/home/baladre1/portal2.victoryeducationalacademy.com.ng/deploy/.next/standalone/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:518)

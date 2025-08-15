@@ -1,0 +1,26 @@
+# DO NOT REMOVE. CLOUDLINUX PASSENGER CONFIGURATION BEGIN
+PassengerAppRoot "/home/baladre1/portal2.victoryeducationalacademy.com.ng/deploy"
+PassengerBaseURI "/"
+PassengerNodejs "/home/baladre1/nodevenv/portal2.victoryeducationalacademy.com.ng/deploy/20/bin/node"
+PassengerAppType node
+PassengerStartupFile server.js
+# DO NOT REMOVE. CLOUDLINUX PASSENGER CONFIGURATION END
+# DO NOT REMOVE OR MODIFY. CLOUDLINUX ENV VARS CONFIGURATION BEGIN
+<IfModule Litespeed>
+SetEnv TZ Africa/Lagos
+SetEnv SMTP_USER noreply@victoryeducationalacademy.com.ng
+SetEnv SMTP_PORT 587
+SetEnv SMTP_PASS 
+SetEnv SMTP_HOST mail.victoryeducationalacademy.com.ng
+SetEnv PAYSTACK_SECRET_KEY 
+SetEnv NODE_ENV production
+SetEnv NEXT_TELEMETRY_DISABLED 1
+SetEnv NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY 
+SetEnv NEXT_PUBLIC_APP_URL https://portal2.victoryeducationalacademy.com.ng
+SetEnv MAX_FILE_SIZE 10485760
+SetEnv JWT_SECRET TYR6eoc4-nu4TREZY_PXb3Z_sAYQSMD53EBeStHShAppFrjZXnJiuIiUCxy2X_cY
+SetEnv ENCRYPTION_KEY 4ef6b22780b2f3ff51e4e441a331fd9ac78b9a182bbc4df8552a51cb3f6a98d2
+SetEnv DATABASE_URL mysql://baladre1_vea_admin:akRT%24d%5D1Y-2a%5EoM%28@localhost:3306/baladre1_vea_portal2
+SetEnv ALLOWED_FILE_TYPES pdf,doc,docx,jpg,jpeg,png
+</IfModule>
+# DO NOT REMOVE OR MODIFY. CLOUDLINUX ENV VARS CONFIGURATION END
