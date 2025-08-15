@@ -1,7 +1,11 @@
 node_modules/
 .next/
-dist/
-out/
+.out/
+.dist/
 .vercel/
+.turbo/
+.cache/
+coverage/
+*.log
 .env
 .env.*
