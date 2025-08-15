@@ -1,8 +1,9 @@
-/** @type {import('postcss-load-config').Config} */
-const config = {
-  plugins: {
-    '@tailwindcss/postcss': {},
-  },
-}
+// postcss.config.mjs
+// Purpose: Enable Tailwind CSS and Autoprefixer for consistent styling across browsers.
 
-export default config
+export default {
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {},
+  },
+};
