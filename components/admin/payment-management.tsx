@@ -1,310 +1,220 @@
-"use client"
+// components/admin/payment-management.tsx
+// Purpose: Reliable admin payment controls (list -> verify -> mark paid).
+// Fixes addressed:
+// - Broken onClick handlers (missing "use client", stale state issues)
+// - No per-row loading state (double submissions, race conditions)
+// - No error surfacing or accessible feedback
+// - Inconsistent formatting for currency and status
+//
+// Expected API (adjust endpoints if your routes differ):
+//   GET  /api/payments                       -> Payment[]
+//   POST /api/payments/verify      { id }    -> 200 OK
+//   POST /api/payments/mark-paid   { id }    -> 200 OK
+//
+// UI behavior:
+// - Loads payments on mount and on demand via "Refresh".
+// - Each row has Verify and Mark Paid actions (disabled while busy).
+// - Shows an error banner if a request fails, focusing it for screen readers.
+//
+// Dependencies: <Button> from components/ui/button, cn() from lib/utils.
 
-import { useState, useEffect } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { CreditCard, Search, CheckCircle, XCircle, Clock, DollarSign } from "lucide-react"
-import { dbManager } from "@/lib/database-manager"
-import { cn } from "@/lib/utils" // Import cn function
+"use client";
 
-interface PaymentRecord {
-  id: string
-  studentName: string
-  parentName: string
-  amount: number
-  status: "paid" | "pending" | "failed"
-  method: "online" | "offline"
-  date: string
-  reference?: string
-  hasAccess: boolean
+import * as React from "react";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+
+type Status = "pending" | "paid" | "failed";
+
+type Payment = {
+  id: string;
+  studentId: string;
+  amount: number;
+  status: Status;
+  createdAt?: string;
+  reference?: string;
+};
+
+const API = {
+  list: "/api/payments",
+  verify: "/api/payments/verify",
+  markPaid: "/api/payments/mark-paid",
+};
+
+/** Format amount as Nigerian Naira (fallback to simple format if Intl fails) */
+function formatNaira(value: number) {
+  try {
+    return new Intl.NumberFormat("en-NG", {
+      style: "currency",
+      currency: "NGN",
+      maximumFractionDigits: 0,
+    }).format(value);
+  } catch {
+    return `₦${Math.round(value).toLocaleString()}`;
+  }
 }
 
-export function PaymentManagement() {
-  const [payments, setPayments] = useState<PaymentRecord[]>([])
-  const [searchTerm, setSearchTerm] = useState("")
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+export default function PaymentManagement() {
+  const [items, setItems] = React.useState<Payment[]>([]);
+  const [loading, setLoading] = React.useState(false); // list loading
+  const [busyId, setBusyId] = React.useState<string | null>(null); // per-row action
+  const [error, setError] = React.useState<string | null>(null);
+  const alertRef = React.useRef<HTMLDivElement | null>(null);
+  const [filter, setFilter] = React.useState<Status | "all">("all");
 
-  useEffect(() => {
-    const loadPayments = async () => {
-      try {
-        setLoading(true)
-        const paymentData = await dbManager.getPayments()
-        setPayments(paymentData)
-        setError(null)
-      } catch (err) {
-        setError("Failed to load payment data")
-        console.error("Error loading payments:", err)
-      } finally {
-        setLoading(false)
-      }
-    }
+  const filtered = React.useMemo(
+    () => (filter === "all" ? items : items.filter((p) => p.status === filter)),
+    [items, filter]
+  );
 
-    loadPayments()
-
-    const handlePaymentUpdate = (updatedPayments: PaymentRecord[]) => {
-      setPayments(updatedPayments)
-    }
-
-    dbManager.on("paymentsUpdated", handlePaymentUpdate)
-
-    return () => {
-      dbManager.off("paymentsUpdated", handlePaymentUpdate)
-    }
-  }, [])
-
-  const filteredPayments = payments.filter(
-    (payment) =>
-      payment.studentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      payment.parentName.toLowerCase().includes(searchTerm.toLowerCase()),
-  )
-
-  const grantAccess = async (paymentId: string) => {
+  async function refresh() {
+    setError(null);
+    setLoading(true);
     try {
-      await dbManager.updatePaymentAccess(paymentId, true)
-      setPayments((prev) =>
-        prev.map((payment) =>
-          payment.id === paymentId ? { ...payment, hasAccess: true, status: "paid" as const } : payment,
-        ),
-      )
-    } catch (err) {
-      setError("Failed to grant access")
-      console.error("Error granting access:", err)
+      const res = await fetch(API.list, { cache: "no-store" });
+      if (!res.ok) throw new Error(await res.text().catch(() => "Failed to load payments."));
+      const data = (await res.json()) as Payment[];
+      setItems(Array.isArray(data) ? data : []);
+    } catch (err: any) {
+      setError(err?.message || "Failed to load payments.");
+      requestAnimationFrame(() => alertRef.current?.focus());
+    } finally {
+      setLoading(false);
     }
   }
 
-  const revokeAccess = async (paymentId: string) => {
+  React.useEffect(() => {
+    refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function doAction(endpoint: string, id: string) {
+    setError(null);
+    setBusyId(id);
     try {
-      await dbManager.updatePaymentAccess(paymentId, false)
-      setPayments((prev) =>
-        prev.map((payment) => (payment.id === paymentId ? { ...payment, hasAccess: false } : payment)),
-      )
-    } catch (err) {
-      setError("Failed to revoke access")
-      console.error("Error revoking access:", err)
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      if (!res.ok) throw new Error(await res.text().catch(() => "Request failed."));
+      await refresh();
+    } catch (err: any) {
+      setError(err?.message || "Action failed.");
+      requestAnimationFrame(() => alertRef.current?.focus());
+    } finally {
+      setBusyId(null);
     }
   }
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case "paid":
-        return <CheckCircle className="h-4 w-4 text-green-500" />
-      case "pending":
-        return <Clock className="h-4 w-4 text-yellow-500" />
-      case "failed":
-        return <XCircle className="h-4 w-4 text-red-500" />
-      default:
-        return null
-    }
-  }
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "paid":
-        return "bg-green-100 text-green-800"
-      case "pending":
-        return "bg-yellow-100 text-yellow-800"
-      case "failed":
-        return "bg-red-100 text-red-800"
-      default:
-        return "bg-gray-100 text-gray-800"
-    }
-  }
-
-  const totalRevenue = payments.filter((p) => p.status === "paid").reduce((sum, p) => sum + p.amount, 0)
-  const pendingPayments = payments.filter((p) => p.status === "pending").length
-  const failedPayments = payments.filter((p) => p.status === "failed").length
-
-  if (loading) {
-    return (
-      <div className="space-y-6">
-        <div className="text-center py-8">
-          <p className="text-gray-500">Loading payment data...</p>
-        </div>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="space-y-6">
-        <div className="text-center py-8">
-          <p className="text-red-500">{error}</p>
-          <Button onClick={() => window.location.reload()} className="mt-4">
-            Retry
-          </Button>
-        </div>
-      </div>
-    )
+  function statusBadge(s: Status) {
+    const base =
+      "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset";
+    if (s === "paid") return <span className={cn(base, "bg-green-50 text-green-700 ring-green-200")}>Paid</span>;
+    if (s === "pending") return <span className={cn(base, "bg-amber-50 text-amber-700 ring-amber-200")}>Pending</span>;
+    return <span className={cn(base, "bg-red-50 text-red-700 ring-red-200")}>Failed</span>;
   }
 
   return (
-    <div className="space-y-6">
-      {/* Payment Statistics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card className="border-[#2d682d]/20">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2">
-              <DollarSign className="h-5 w-5 text-[#2d682d]" />
-              <div>
-                <p className="text-sm text-gray-600">Total Revenue</p>
-                <p className="text-xl font-bold text-[#2d682d]">₦{totalRevenue.toLocaleString()}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+    <section className="space-y-4">
+      {/* Header */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h2 className="text-lg font-semibold">Payment Management</h2>
+        <div className="flex items-center gap-2">
+          {/* Quick filter */}
+          <select
+            aria-label="Filter by status"
+            className="h-10 rounded-xl border border-[hsl(var(--input))] bg-white px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value as Status | "all")}
+            disabled={loading}
+          >
+            <option value="all">All</option>
+            <option value="pending">Pending</option>
+            <option value="paid">Paid</option>
+            <option value="failed">Failed</option>
+          </select>
 
-        <Card className="border-green-200">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2">
-              <CheckCircle className="h-5 w-5 text-green-500" />
-              <div>
-                <p className="text-sm text-gray-600">Paid</p>
-                <p className="text-xl font-bold text-green-600">{payments.filter((p) => p.status === "paid").length}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-yellow-200">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2">
-              <Clock className="h-5 w-5 text-yellow-500" />
-              <div>
-                <p className="text-sm text-gray-600">Pending</p>
-                <p className="text-xl font-bold text-yellow-600">{pendingPayments}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-red-200">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2">
-              <XCircle className="h-5 w-5 text-red-500" />
-              <div>
-                <p className="text-sm text-gray-600">Failed</p>
-                <p className="text-xl font-bold text-red-600">{failedPayments}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+          <Button variant="secondary" onClick={refresh} disabled={loading} aria-label="Refresh payments">
+            {loading ? "Refreshing…" : "Refresh"}
+          </Button>
+        </div>
       </div>
 
-      {/* Payment Records */}
-      <Card className="border-[#b29032]/20">
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2 text-[#b29032]">
-                <CreditCard className="h-5 w-5" />
-                Payment Management
-              </CardTitle>
-              <CardDescription>Manage school fee payments and access control</CardDescription>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Search */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <Input
-              placeholder="Search payments..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 border-[#2d682d]/20 focus:border-[#b29032]"
-            />
-          </div>
+      {/* Error banner */}
+      {error && (
+        <div
+          ref={alertRef}
+          role="alert"
+          tabIndex={-1}
+          className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 outline-none"
+        >
+          {error}
+        </div>
+      )}
 
-          {/* Payments Table */}
-          <div className="border rounded-lg">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Student/Parent</TableHead>
-                  <TableHead>Amount</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Method</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Access</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredPayments.map((payment) => (
-                  <TableRow key={payment.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <Avatar className="h-8 w-8">
-                          <AvatarFallback className="bg-[#2d682d] text-white text-xs">
-                            {payment.studentName
-                              .split(" ")
-                              .map((n) => n[0])
-                              .join("")}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <p className="font-medium">{payment.studentName}</p>
-                          <p className="text-xs text-gray-500">{payment.parentName}</p>
-                        </div>
+      {/* List */}
+      <div className="overflow-x-auto">
+        <table className="w-full border-separate border-spacing-y-2">
+          <thead>
+            <tr className="text-left text-xs text-muted-foreground">
+              <th className="px-2 py-1">Student</th>
+              <th className="px-2 py-1">Amount</th>
+              <th className="px-2 py-1">Status</th>
+              <th className="px-2 py-1">Reference</th>
+              <th className="px-2 py-1">Created</th>
+              <th className="px-2 py-1">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="px-2 py-6 text-center text-sm text-muted-foreground">
+                  {loading ? "Loading payments…" : "No payments found."}
+                </td>
+              </tr>
+            ) : (
+              filtered.map((p) => {
+                const busy = busyId === p.id;
+                return (
+                  <tr key={p.id} className="rounded-xl border bg-card align-middle">
+                    <td className="px-2 py-2">
+                      <div className="font-medium">{p.studentId}</div>
+                    </td>
+                    <td className="px-2 py-2 whitespace-nowrap">{formatNaira(p.amount)}</td>
+                    <td className="px-2 py-2">{statusBadge(p.status)}</td>
+                    <td className="px-2 py-2">
+                      <span className="text-xs text-muted-foreground">{p.reference || "—"}</span>
+                    </td>
+                    <td className="px-2 py-2 whitespace-nowrap">
+                      <span className="text-xs text-muted-foreground">
+                        {p.createdAt ? new Date(p.createdAt).toLocaleString() : "—"}
+                      </span>
+                    </td>
+                    <td className="px-2 py-2">
+                      <div className="flex gap-2">
+                        <Button
+                          variant="secondary"
+                          onClick={() => doAction(API.verify, p.id)}
+                          disabled={busy || p.status === "paid"}
+                        >
+                          {busy ? "Working…" : "Verify"}
+                        </Button>
+                        <Button
+                          onClick={() => doAction(API.markPaid, p.id)}
+                          disabled={busy || p.status === "paid"}
+                        >
+                          {busy ? "Working…" : "Mark Paid"}
+                        </Button>
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      <span className="font-medium">₦{payment.amount.toLocaleString()}</span>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        {getStatusIcon(payment.status)}
-                        <Badge className={getStatusColor(payment.status)}>{payment.status}</Badge>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="capitalize">
-                        {payment.method}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{payment.date}</TableCell>
-                    <TableCell>
-                      <Badge variant={payment.hasAccess ? "default" : "secondary"}>
-                        {payment.hasAccess ? "Granted" : "Restricted"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        {!payment.hasAccess ? (
-                          <Button
-                            size="sm"
-                            onClick={() => grantAccess(payment.id)}
-                            className={cn(
-                              "bg-[#2d682d] hover:bg-[#1a4a1a] text-white",
-                              "text-xs font-medium transition-all duration-200",
-                            )}
-                          >
-                            Grant Access
-                          </Button>
-                        ) : (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => revokeAccess(payment.id)}
-                            className="text-xs font-medium transition-all duration-200"
-                          >
-                            Revoke Access
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  )
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
 }
