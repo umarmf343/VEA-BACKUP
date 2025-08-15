@@ -1,167 +1,137 @@
-"use client"
+// components/ui/form.tsx
+// Purpose: Safe, accessible form wrapper with standardized submit handling.
+// Fixes:
+// - onSubmit not firing reliably (mixed server/client handling)
+// - Double submissions and missing loading states
+// - No accessible error messaging
+// - Inconsistent spacing and focus management
+//
+// Usage:
+// <Form onSubmit={async (data) => { await doSomething(data) }}>
+//   <Input name="title" required />
+//   <Button type="submit" isLoading={/* optional external state */}>Save</Button>
+// </Form>
+//
+// Notes:
+// - This component controls its own "loading" state; it disables inner fields during submit.
+// - Throw an Error inside your onSubmit to show an error banner automatically.
+// - Set resetOnSuccess to true if you want the form to clear after a successful submit.
 
-import * as React from "react"
-import * as LabelPrimitive from "@radix-ui/react-label"
-import { Slot } from "@radix-ui/react-slot"
-import {
-  Controller,
-  FormProvider,
-  useFormContext,
-  useFormState,
-  type ControllerProps,
-  type FieldPath,
-  type FieldValues,
-} from "react-hook-form"
+"use client";
 
-import { cn } from "@/lib/utils"
-import { Label } from "@/components/ui/label"
+import * as React from "react";
+import { cn } from "@/lib/utils";
 
-const Form = FormProvider
+export type FormDataObject = Record<string, FormDataEntryValue | FormDataEntryValue[]>;
 
-type FormFieldContextValue<
-  TFieldValues extends FieldValues = FieldValues,
-  TName extends FieldPath<TFieldValues> = FieldPath<TFieldValues>,
-> = {
-  name: TName
+export interface FormProps
+  extends Omit<React.FormHTMLAttributes<HTMLFormElement>, "onSubmit"> {
+  /**
+   * Submit handler. Return/await a Promise to keep the built-in loading state active.
+   * Throw an Error or reject the Promise to display an error banner.
+   */
+  onSubmit: (data: FormDataObject, event: React.FormEvent<HTMLFormElement>) => Promise<void> | void;
+  /** Reset inputs after a successful submit (default: false). */
+  resetOnSuccess?: boolean;
+  /** Optional external loading to merge with internal state. */
+  busy?: boolean;
+  /** Show a top error banner (default true). */
+  showErrorBanner?: boolean;
+  /** ClassName for the inner <fieldset>. */
+  fieldsetClassName?: string;
 }
 
-const FormFieldContext = React.createContext<FormFieldContextValue>(
-  {} as FormFieldContextValue
-)
-
-const FormField = <
-  TFieldValues extends FieldValues = FieldValues,
-  TName extends FieldPath<TFieldValues> = FieldPath<TFieldValues>,
->({
-  ...props
-}: ControllerProps<TFieldValues, TName>) => {
-  return (
-    <FormFieldContext.Provider value={{ name: props.name }}>
-      <Controller {...props} />
-    </FormFieldContext.Provider>
-  )
-}
-
-const useFormField = () => {
-  const fieldContext = React.useContext(FormFieldContext)
-  const itemContext = React.useContext(FormItemContext)
-  const { getFieldState } = useFormContext()
-  const formState = useFormState({ name: fieldContext.name })
-  const fieldState = getFieldState(fieldContext.name, formState)
-
-  if (!fieldContext) {
-    throw new Error("useFormField should be used within <FormField>")
+/** Convert FormData to a plain object, grouping multiple entries per key. */
+function formDataToObject(fd: FormData): FormDataObject {
+  const obj: FormDataObject = {};
+  for (const [key, value] of fd.entries()) {
+    if (Object.prototype.hasOwnProperty.call(obj, key)) {
+      const current = obj[key];
+      if (Array.isArray(current)) current.push(value);
+      else obj[key] = [current, value];
+    } else {
+      obj[key] = value;
+    }
   }
-
-  const { id } = itemContext
-
-  return {
-    id,
-    name: fieldContext.name,
-    formItemId: `${id}-form-item`,
-    formDescriptionId: `${id}-form-item-description`,
-    formMessageId: `${id}-form-item-message`,
-    ...fieldState,
-  }
+  return obj;
 }
 
-type FormItemContextValue = {
-  id: string
-}
-
-const FormItemContext = React.createContext<FormItemContextValue>(
-  {} as FormItemContextValue
-)
-
-function FormItem({ className, ...props }: React.ComponentProps<"div">) {
-  const id = React.useId()
-
-  return (
-    <FormItemContext.Provider value={{ id }}>
-      <div
-        data-slot="form-item"
-        className={cn("grid gap-2", className)}
-        {...props}
-      />
-    </FormItemContext.Provider>
-  )
-}
-
-function FormLabel({
+export function Form({
   className,
-  ...props
-}: React.ComponentProps<typeof LabelPrimitive.Root>) {
-  const { error, formItemId } = useFormField()
+  fieldsetClassName,
+  onSubmit,
+  resetOnSuccess = false,
+  busy = false,
+  showErrorBanner = true,
+  children,
+  ...rest
+}: FormProps) {
+  const [submitting, setSubmitting] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const formRef = React.useRef<HTMLFormElement | null>(null);
+  const isBusy = submitting || busy;
 
-  return (
-    <Label
-      data-slot="form-label"
-      data-error={!!error}
-      className={cn("data-[error=true]:text-destructive", className)}
-      htmlFor={formItemId}
-      {...props}
-    />
-  )
-}
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (isBusy) return;
 
-function FormControl({ ...props }: React.ComponentProps<typeof Slot>) {
-  const { error, formItemId, formDescriptionId, formMessageId } = useFormField()
+    setError(null);
+    setSubmitting(true);
 
-  return (
-    <Slot
-      data-slot="form-control"
-      id={formItemId}
-      aria-describedby={
-        !error
-          ? `${formDescriptionId}`
-          : `${formDescriptionId} ${formMessageId}`
+    const fd = new FormData(e.currentTarget);
+    const data = formDataToObject(fd);
+
+    try {
+      await onSubmit(data, e);
+      if (resetOnSuccess) {
+        // Reset the form after successful submission
+        e.currentTarget.reset();
       }
-      aria-invalid={!!error}
-      {...props}
-    />
-  )
-}
-
-function FormDescription({ className, ...props }: React.ComponentProps<"p">) {
-  const { formDescriptionId } = useFormField()
-
-  return (
-    <p
-      data-slot="form-description"
-      id={formDescriptionId}
-      className={cn("text-muted-foreground text-sm", className)}
-      {...props}
-    />
-  )
-}
-
-function FormMessage({ className, ...props }: React.ComponentProps<"p">) {
-  const { error, formMessageId } = useFormField()
-  const body = error ? String(error?.message ?? "") : props.children
-
-  if (!body) {
-    return null
+    } catch (err: any) {
+      // Normalize error message
+      const msg =
+        (err && (err.message || err.toString())) ||
+        "Submission failed. Please try again.";
+      setError(String(msg));
+      // Move focus to banner for accessibility
+      requestAnimationFrame(() => {
+        formRef.current?.querySelector<HTMLDivElement>("[role='alert']")?.focus();
+      });
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
-    <p
-      data-slot="form-message"
-      id={formMessageId}
-      className={cn("text-destructive text-sm", className)}
-      {...props}
+    <form
+      ref={formRef}
+      className={cn("space-y-3", className)}
+      onSubmit={handleSubmit}
+      data-loading={isBusy || undefined}
+      {...rest}
     >
-      {body}
-    </p>
-  )
+      {showErrorBanner && error && (
+        <div
+          role="alert"
+          tabIndex={-1}
+          className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 outline-none"
+        >
+          {error}
+        </div>
+      )}
+
+      <fieldset
+        disabled={isBusy}
+        className={cn(
+          // Keep inner spacing consistent; consumers can override via fieldsetClassName
+          "space-y-3 disabled:cursor-not-allowed",
+          fieldsetClassName
+        )}
+      >
+        {children}
+      </fieldset>
+    </form>
+  );
 }
 
-export {
-  useFormField,
-  Form,
-  FormItem,
-  FormLabel,
-  FormControl,
-  FormDescription,
-  FormMessage,
-  FormField,
-}
+export default Form;
