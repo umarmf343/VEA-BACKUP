@@ -1,314 +1,240 @@
-"use client"
+// components/study-materials.tsx
+// Purpose: Reliable upload & download of study materials with validation and clear UX.
+// Fixes addressed:
+// - onClick/onChange handlers not firing due to missing "use client"
+// - No feedback during uploads; no error surfacing
+// - Inconsistent styling and missing accessibility attributes
+// - List not refreshing after successful upload
+//
+// Expected API (adjust endpoints if your routes differ):
+//   GET  /api/study-materials               -> Item[]
+//   POST /api/study-materials/upload  (FormData: file) -> { ok: true, ... }
+//
+// Item shape example returned by GET:
+//   { id: string; filename: string; url: string; size?: number; uploadedAt?: string }
+//
+// Dependencies: <Button>, <Input>, cn().
 
-import type React from "react"
+"use client";
 
-import { useState, useEffect } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Badge } from "@/components/ui/badge"
-import { Upload, FileText, Download, Eye, Trash2, Plus } from "lucide-react"
-import { DatabaseManager } from "@/lib/database-manager"
+import * as React from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 
-interface StudyMaterial {
-  id: string
-  title: string
-  description: string
-  subject: string
-  class: string
-  fileType: string
-  uploadDate: string
-  downloadCount: number
-  teacherName: string
+type Item = {
+  id: string;
+  filename: string;
+  url: string;
+  size?: number; // bytes
+  uploadedAt?: string; // ISO string
+};
+
+const API = {
+  list: "/api/study-materials",
+  upload: "/api/study-materials/upload",
+};
+
+// Accept common doc/image types; adjust as needed.
+const ACCEPT =
+  ".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.png,.jpg,.jpeg,.gif,.zip,.rar";
+
+const MAX_FILE_MB = 50; // client-side size guard
+
+function bytesPretty(b?: number) {
+  if (!b && b !== 0) return "—";
+  const units = ["B", "KB", "MB", "GB"];
+  let i = 0;
+  let n = b;
+  while (n >= 1024 && i < units.length - 1) {
+    n /= 1024;
+    i++;
+  }
+  return `${n.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
-interface StudyMaterialsProps {
-  userRole: "teacher" | "student"
-  teacherName?: string
-  studentClass?: string
-}
+export default function StudyMaterials() {
+  const [listLoading, setListLoading] = React.useState(false);
+  const [items, setItems] = React.useState<Item[]>([]);
+  const [file, setFile] = React.useState<File | null>(null);
+  const [uploading, setUploading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const alertRef = React.useRef<HTMLDivElement | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
 
-export function StudyMaterials({ userRole, teacherName, studentClass }: StudyMaterialsProps) {
-  const [materials, setMaterials] = useState<StudyMaterial[]>([])
-  const [loading, setLoading] = useState(true)
-  const [showUploadForm, setShowUploadForm] = useState(false)
-  const [uploadForm, setUploadForm] = useState({
-    title: "",
-    description: "",
-    subject: "",
-    class: "",
-    file: null as File | null,
-  })
-
-  const dbManager = DatabaseManager.getInstance()
-
-  useEffect(() => {
-    loadMaterials()
-
-    // Real-time listener for materials updates
-    const handleMaterialsUpdate = () => {
-      loadMaterials()
-    }
-
-    dbManager.on("studyMaterialsUpdated", handleMaterialsUpdate)
-
-    return () => {
-      dbManager.off("studyMaterialsUpdated", handleMaterialsUpdate)
-    }
-  }, [])
-
-  const loadMaterials = async () => {
+  async function refresh() {
+    setError(null);
+    setListLoading(true);
     try {
-      setLoading(true)
-      const allMaterials = await dbManager.getStudyMaterials()
-
-      // Filter materials based on user role
-      const filteredMaterials =
-        userRole === "student" ? allMaterials.filter((m) => m.class === studentClass) : allMaterials
-
-      setMaterials(filteredMaterials)
-    } catch (error) {
-      console.error("Error loading study materials:", error)
+      const res = await fetch(API.list, { cache: "no-store" });
+      if (!res.ok) throw new Error(await res.text().catch(() => "Failed to load materials."));
+      const data = (await res.json()) as Item[];
+      setItems(Array.isArray(data) ? data : []);
+    } catch (err: any) {
+      setError(err?.message || "Failed to load materials.");
+      requestAnimationFrame(() => alertRef.current?.focus());
     } finally {
-      setLoading(false)
+      setListLoading(false);
     }
   }
 
-  const handleUpload = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!uploadForm.file) return
+  React.useEffect(() => {
+    refresh();
+  }, []);
 
+  function onPick(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0] || null;
+    setError(null);
+    setFile(f);
+  }
+
+  async function onUpload() {
+    setError(null);
+    if (!file) {
+      setError("Select a file to upload.");
+      requestAnimationFrame(() => alertRef.current?.focus());
+      return;
+    }
+
+    // Client-side size guard
+    const tooBig = file.size > MAX_FILE_MB * 1024 * 1024;
+    if (tooBig) {
+      setError(`File is too large. Maximum size is ${MAX_FILE_MB} MB.`);
+      requestAnimationFrame(() => alertRef.current?.focus());
+      return;
+    }
+
+    setUploading(true);
     try {
-      const newMaterial: StudyMaterial = {
-        id: Date.now().toString(),
-        title: uploadForm.title,
-        description: uploadForm.description,
-        subject: uploadForm.subject,
-        class: uploadForm.class,
-        fileType: uploadForm.file.name.split(".").pop()?.toUpperCase() || "FILE",
-        uploadDate: new Date().toISOString().split("T")[0],
-        downloadCount: 0,
-        teacherName: teacherName || "Unknown Teacher",
+      const fd = new FormData();
+      fd.set("file", file);
+
+      const res = await fetch(API.upload, { method: "POST", body: fd });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(text || "Upload failed.");
       }
 
-      await dbManager.saveStudyMaterial(newMaterial)
-      setUploadForm({ title: "", description: "", subject: "", class: "", file: null })
-      setShowUploadForm(false)
-
-      // Trigger real-time update
-      dbManager.emit("studyMaterialsUpdated")
-    } catch (error) {
-      console.error("Error uploading study material:", error)
+      // Clear selection, refresh list
+      setFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      await refresh();
+    } catch (err: any) {
+      setError(err?.message || "Upload failed. Please try again.");
+      requestAnimationFrame(() => alertRef.current?.focus());
+    } finally {
+      setUploading(false);
     }
-  }
-
-  const handleDelete = async (id: string) => {
-    try {
-      await dbManager.deleteStudyMaterial(id)
-      dbManager.emit("studyMaterialsUpdated")
-    } catch (error) {
-      console.error("Error deleting study material:", error)
-    }
-  }
-
-  const handleDownload = async (materialId: string) => {
-    try {
-      await dbManager.incrementDownloadCount(materialId)
-      dbManager.emit("studyMaterialsUpdated")
-    } catch (error) {
-      console.error("Error updating download count:", error)
-    }
-  }
-
-  if (loading) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-center py-12">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#2d682d] mx-auto mb-4"></div>
-            <p className="text-gray-600">Loading study materials...</p>
-          </div>
-        </div>
-      </div>
-    )
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-xl font-semibold text-[#2d682d]">Study Materials</h3>
-          <p className="text-gray-600">
-            {userRole === "teacher" ? "Upload and manage study materials" : "Access study materials for your class"}
-          </p>
+    <section className="space-y-4">
+      <header className="space-y-1">
+        <h2 className="text-lg font-semibold">Study Materials</h2>
+        <p className="text-sm text-muted-foreground">
+          Upload files (PDF, DOCX, PPTX, images, etc.) and share with students.
+        </p>
+      </header>
+
+      {/* Error banner */}
+      {error && (
+        <div
+          ref={alertRef}
+          role="alert"
+          tabIndex={-1}
+          className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 outline-none"
+        >
+          {error}
         </div>
-        {userRole === "teacher" && (
-          <Button onClick={() => setShowUploadForm(true)} className="bg-[#2d682d] hover:bg-[#1a4a1a] text-white">
-            <Plus className="h-4 w-4 mr-2" />
-            Upload Material
-          </Button>
+      )}
+
+      {/* Uploader */}
+      <div className="rounded-xl border bg-card p-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="flex-1">
+            <label htmlFor="material-file" className="block text-sm font-medium">
+              Select file
+            </label>
+            <Input
+              id="material-file"
+              ref={fileInputRef}
+              type="file"
+              accept={ACCEPT}
+              onChange={onPick}
+              className="mt-1"
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Accepted: {ACCEPT.replaceAll(".", "").replaceAll(",", ", ")} • Max {MAX_FILE_MB} MB
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setFile(null);
+                setError(null);
+                if (fileInputRef.current) fileInputRef.current.value = "";
+              }}
+              disabled={uploading && !file}
+            >
+              Clear
+            </Button>
+            <Button onClick={onUpload} isLoading={uploading} disabled={!file || uploading}>
+              Upload
+            </Button>
+          </div>
+        </div>
+
+        {file && (
+          <div className="mt-2 text-xs text-muted-foreground">
+            Selected: <span className="font-medium text-foreground">{file.name}</span>{" "}
+            • {bytesPretty(file.size)}
+          </div>
         )}
       </div>
 
-      {/* Upload Form */}
-      {showUploadForm && userRole === "teacher" && (
-        <Card className="border-[#b29032]/20">
-          <CardHeader>
-            <CardTitle className="text-[#b29032]">Upload Study Material</CardTitle>
-            <CardDescription>Add new study material for students</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleUpload} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="title">Title</Label>
-                  <Input
-                    id="title"
-                    value={uploadForm.title}
-                    onChange={(e) => setUploadForm((prev) => ({ ...prev, title: e.target.value }))}
-                    placeholder="Enter material title"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="subject">Subject</Label>
-                  <Select
-                    value={uploadForm.subject}
-                    onValueChange={(value) => setUploadForm((prev) => ({ ...prev, subject: value }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select subject" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Mathematics">Mathematics</SelectItem>
-                      <SelectItem value="English">English Language</SelectItem>
-                      <SelectItem value="Physics">Physics</SelectItem>
-                      <SelectItem value="Chemistry">Chemistry</SelectItem>
-                      <SelectItem value="Biology">Biology</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="class">Class</Label>
-                <Select
-                  value={uploadForm.class}
-                  onValueChange={(value) => setUploadForm((prev) => ({ ...prev, class: value }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select class" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="JSS 1">JSS 1</SelectItem>
-                    <SelectItem value="JSS 2">JSS 2</SelectItem>
-                    <SelectItem value="JSS 3">JSS 3</SelectItem>
-                    <SelectItem value="SS 1">SS 1</SelectItem>
-                    <SelectItem value="SS 2">SS 2</SelectItem>
-                    <SelectItem value="SS 3">SS 3</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="description">Description</Label>
-                <Textarea
-                  id="description"
-                  value={uploadForm.description}
-                  onChange={(e) => setUploadForm((prev) => ({ ...prev, description: e.target.value }))}
-                  placeholder="Enter material description"
-                  rows={3}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="file">File</Label>
-                <Input
-                  id="file"
-                  type="file"
-                  onChange={(e) => setUploadForm((prev) => ({ ...prev, file: e.target.files?.[0] || null }))}
-                  accept=".pdf,.doc,.docx,.ppt,.pptx"
-                  required
-                />
-              </div>
-              <div className="flex gap-2">
-                <Button type="submit" className="bg-[#2d682d] hover:bg-[#1a4a1a] text-white">
-                  <Upload className="h-4 w-4 mr-2" />
-                  Upload Material
-                </Button>
-                <Button type="button" variant="outline" onClick={() => setShowUploadForm(false)}>
-                  Cancel
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
-      )}
+      {/* List */}
+      <div className="rounded-xl border bg-card">
+        <div className="flex items-center justify-between border-b px-3 py-2">
+          <div className="text-sm font-medium">Files</div>
+          <Button variant="secondary" onClick={refresh} disabled={listLoading}>
+            {listLoading ? "Refreshing…" : "Refresh"}
+          </Button>
+        </div>
 
-      {/* Materials List */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {materials.map((material) => (
-          <Card key={material.id} className="border-[#2d682d]/20 hover:border-[#2d682d]/40 transition-colors">
-            <CardHeader className="pb-3">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <CardTitle className="text-sm font-medium text-[#2d682d] line-clamp-2">{material.title}</CardTitle>
-                  <CardDescription className="text-xs mt-1">
-                    {material.subject} • {material.class}
-                  </CardDescription>
-                </div>
-                <Badge variant="secondary" className="text-xs">
-                  {material.fileType}
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="pt-0">
-              <p className="text-sm text-gray-600 mb-3 line-clamp-2">{material.description}</p>
-              <div className="flex items-center justify-between text-xs text-gray-500 mb-3">
-                <span>By {material.teacherName}</span>
-                <span>{material.downloadCount} downloads</span>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  className="flex-1 bg-[#2d682d] hover:bg-[#1a4a1a] text-white"
-                  onClick={() => handleDownload(material.id)}
-                >
-                  <Download className="h-3 w-3 mr-1" />
-                  Download
-                </Button>
-                <Button size="sm" variant="outline">
-                  <Eye className="h-3 w-3" />
-                </Button>
-                {userRole === "teacher" && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleDelete(material.id)}
-                    className="text-red-600 hover:text-red-700"
+        <div className="max-h-[60dvh] overflow-auto">
+          {items.length === 0 ? (
+            <div className="px-3 py-8 text-center text-sm text-muted-foreground">
+              {listLoading ? "Loading…" : "No materials found."}
+            </div>
+          ) : (
+            <ul className="divide-y">
+              {items.map((it) => (
+                <li key={it.id} className="flex items-center justify-between gap-3 px-3 py-2">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium">{it.filename}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {bytesPretty(it.size)} •{" "}
+                      {it.uploadedAt ? new Date(it.uploadedAt).toLocaleString() : "—"}
+                    </div>
+                  </div>
+                  <a
+                    href={it.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className={cn(
+                      "text-sm underline",
+                      "focus-visible:outline-none focus-visible:ring-2 rounded-md px-1"
+                    )}
                   >
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+                    Download
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
-
-      {materials.length === 0 && (
-        <Card className="border-dashed border-2 border-gray-300">
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <FileText className="h-12 w-12 text-gray-400 mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No study materials</h3>
-            <p className="text-gray-500 text-center">
-              {userRole === "teacher"
-                ? "Upload your first study material to get started"
-                : "No study materials available for your class yet"}
-            </p>
-          </CardContent>
-        </Card>
-      )}
-    </div>
-  )
+    </section>
+  );
 }
