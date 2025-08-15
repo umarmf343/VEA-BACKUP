@@ -5,11 +5,6 @@
 // - No refresh / retry (manual refresh + 10s polling)
 // - Missing accessible error surfacing
 // - Inconsistent metric cards and spacing
-//
-// Expected API (adjust if your routes differ):
-//   GET /api/dashboard/teacher -> { pendingMarks: number; assignments: number; messages: number }
-//
-// Dependencies: uses global token classes from app/globals.css and cn().
 
 "use client";
 
@@ -39,7 +34,7 @@ export default function TeacherDashboard() {
       if (!res.ok) throw new Error(await res.text().catch(() => "Failed to load dashboard."));
       const json = (await res.json()) as Partial<TeacherData>;
 
-      // Defensive defaults to avoid NaN/undefined UI
+      // Defensive defaults
       const safe: TeacherData = {
         pendingMarks: Number(json.pendingMarks ?? 0),
         assignments: Number(json.assignments ?? 0),
@@ -74,7 +69,7 @@ export default function TeacherDashboard() {
           onClick={load}
           className={cn(
             "h-10 rounded-xl border border-[hsl(var(--input))] bg-white px-3 text-sm",
-            "hover:bg黑/5 hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+            "hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
           )}
           aria-label="Refresh dashboard"
           disabled={loading}
