@@ -2,8 +2,11 @@
   "compilerOptions": {
     /* JS/TS targets */
     "target": "ES2022",
-    "lib": ["DOM", "DOM.Iterable", "ESNext"],
-
+    "lib": [
+      "DOM",
+      "DOM.Iterable",
+      "ESNext"
+    ],
     /* Next.js + React */
     "jsx": "preserve",
     "module": "ESNext",
@@ -12,21 +15,33 @@
     "resolveJsonModule": true,
     "noEmit": true,
     "incremental": true,
-
     /* Type safety */
     "strict": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-
     /* Path aliases (used throughout the app, e.g. "@/lib/utils") */
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./*"]
+      "@/*": [
+        "./*"
+      ]
     },
-
     /* Next.js type-plugin for better DX */
-    "plugins": [{ "name": "next" }]
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "esModuleInterop": true,
+    "isolatedModules": true
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx"],
-  "exclude": ["node_modules"]
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    "next-env.d.ts",
+    ".next/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
 }
