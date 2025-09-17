@@ -528,7 +528,7 @@ export function recordAdminPasswordReset(id: string) {
       id: randomUUID(),
       type: "info",
       title: "Password reset completed",
-      message: `${user.name}'s password was reset by an administrator.",
+      message: `${user.name}'s password was reset by an administrator.`,
       timestamp: now,
       read: false,
       category: "security",

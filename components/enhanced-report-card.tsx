@@ -3,155 +3,34 @@
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Download, PrinterIcon as Print } from "lucide-react"
-import { useEffect, useState } from "react"
-import { db, dbManager } from "@/lib/database"
+import { useEffect, useMemo, useState } from "react"
 import { safeStorage } from "@/lib/safe-storage"
+import type { ReportCardResponse } from "@/lib/report-card-types"
 
-interface ReportCardData {
-  student: {
-    id: string
-    name: string
-    admissionNumber: string
-    class: string
-    term: string
-    session: string
-    numberInClass?: number
-    status?: string
-  }
-  subjects: Array<{
-    name: string
-    ca1: number
-    ca2: number
-    assignment: number
-    exam: number
-    total: number
-    grade: string
-    remarks: string
-  }>
-  affectiveDomain: {
-    neatness: string
-    honesty: string
-    punctuality: string
-  }
-  psychomotorDomain: {
-    sport: string
-    handwriting: string
-  }
-  classTeacherRemarks: string
-  totalObtainable: number
-  totalObtained: number
-  average: number
-  position: string
-  vacationDate?: string
-  resumptionDate?: string
-}
-
-export function EnhancedReportCard({ data }: { data?: ReportCardData }) {
+export function EnhancedReportCard({ data }: { data?: ReportCardResponse }) {
   const [schoolLogo, setSchoolLogo] = useState<string>("")
   const [headmasterSignature, setHeadmasterSignature] = useState<string>("")
   const [studentPhoto, setStudentPhoto] = useState<string>("")
   const [headmasterName, setHeadmasterName] = useState<string>("Dr. Emmanuel Adebayo")
-  const [reportCardData, setReportCardData] = useState<ReportCardData | null>(data || null)
+  const [reportCardData, setReportCardData] = useState<ReportCardResponse | null>(data || null)
 
   useEffect(() => {
-    const loadReportCardData = async () => {
-      if (data?.student?.id) {
-        try {
-          // Load academic marks
-          const marks = await db.studentMarks.findMany({
-            studentId: data.student.id,
-            term: data.student.term,
-            session: data.student.session,
-          })
-
-          // Load behavioral assessments
-          const behavioral = await db.behavioralAssessments.findMany({
-            studentId: data.student.id,
-            term: data.student.term,
-            session: data.student.session,
-          })
-
-          // Load attendance records
-          const attendance = await db.attendanceRecords.findMany({
-            studentId: data.student.id,
-            term: data.student.term,
-            session: data.student.session,
-          })
-
-          // Load class teacher remarks
-          const remarks = await db.classTeacherRemarks.findMany({
-            studentId: data.student.id,
-            term: data.student.term,
-            session: data.student.session,
-          })
-
-          if (marks.length > 0) {
-            const subjects = marks.map((mark) => ({
-              name: mark.subject,
-              ca1: mark.ca1,
-              ca2: mark.ca2,
-              assignment: mark.assignment,
-              exam: mark.exam,
-              total: mark.grandTotal,
-              grade: mark.grade,
-              remarks: mark.remarks,
-            }))
-
-            const totalObtained = subjects.reduce((sum, subject) => sum + subject.total, 0)
-            const totalObtainable = subjects.length * 100
-            const average = totalObtainable > 0 ? (totalObtained / totalObtainable) * 100 : 0
-
-            const enhancedData: ReportCardData = {
-              ...data,
-              subjects,
-              totalObtained,
-              totalObtainable,
-              average,
-              affectiveDomain: behavioral[0]?.affectiveDomain || data.affectiveDomain,
-              psychomotorDomain: behavioral[0]?.psychomotorDomain || data.psychomotorDomain,
-              classTeacherRemarks: remarks[0]?.remarks || data.classTeacherRemarks,
-              position: attendance[0]?.position
-                ? `${attendance[0].position}${getOrdinalSuffix(attendance[0].position)}`
-                : data.position,
-            }
-
-            setReportCardData(enhancedData)
-          }
-        } catch (error) {
-          console.error("Error loading report card data:", error)
-          setReportCardData(data)
-        }
-      }
-    }
-
-    loadReportCardData()
-
-    const handleMarksUpdate = () => loadReportCardData()
-    const handleBehavioralUpdate = () => loadReportCardData()
-    const handleAttendanceUpdate = () => loadReportCardData()
-    const handleRemarksUpdate = () => loadReportCardData()
-
-    dbManager.addEventListener("studentMarks", handleMarksUpdate)
-    dbManager.addEventListener("behavioralAssessments", handleBehavioralUpdate)
-    dbManager.addEventListener("attendancePositions", handleAttendanceUpdate)
-    dbManager.addEventListener("classTeacherRemarks", handleRemarksUpdate)
-
-    return () => {
-      dbManager.removeEventListener("studentMarks", handleMarksUpdate)
-      dbManager.removeEventListener("behavioralAssessments", handleBehavioralUpdate)
-      dbManager.removeEventListener("attendancePositions", handleAttendanceUpdate)
-      dbManager.removeEventListener("classTeacherRemarks", handleRemarksUpdate)
-    }
+    setReportCardData(data || null)
   }, [data])
 
-  const getOrdinalSuffix = (num: number): string => {
-    const j = num % 10
-    const k = num % 100
-    if (j === 1 && k !== 11) return "st"
-    if (j === 2 && k !== 12) return "nd"
-    if (j === 3 && k !== 13) return "rd"
-    return "th"
-  }
+  const totals = useMemo(() => {
+    if (!reportCardData) {
+      return { ca1: 0, ca2: 0, assignment: 0, exam: 0 }
+    }
+    return {
+      ca1: reportCardData.subjects.reduce((sum, subject) => sum + subject.ca1, 0),
+      ca2: reportCardData.subjects.reduce((sum, subject) => sum + subject.ca2, 0),
+      assignment: reportCardData.subjects.reduce((sum, subject) => sum + subject.assignment, 0),
+      exam: reportCardData.subjects.reduce((sum, subject) => sum + subject.exam, 0),
+    }
+  }, [reportCardData])
+
+  const totalContinuousAssessment = totals.ca1 + totals.ca2 + totals.assignment
 
   useEffect(() => {
     const brandingData = safeStorage.getItem("schoolBranding")
@@ -405,24 +284,13 @@ export function EnhancedReportCard({ data }: { data?: ReportCardData }) {
                 <td className="border border-[#2d682d] print:border-black p-3 font-bold text-center text-[#2d682d] print:text-black">
                   TOTALS
                 </td>
+                <td className="border border-[#2d682d] print:border-black p-3 text-center font-bold">{totals.ca1}</td>
+                <td className="border border-[#2d682d] print:border-black p-3 text-center font-bold">{totals.ca2}</td>
+                <td className="border border-[#2d682d] print:border-black p-3 text-center font-bold">{totals.assignment}</td>
                 <td className="border border-[#2d682d] print:border-black p-3 text-center font-bold">
-                  {reportCardData.subjects.reduce((sum, subject) => sum + subject.ca1, 0)}
+                  {totalContinuousAssessment}
                 </td>
-                <td className="border border-[#2d682d] print:border-black p-3 text-center font-bold">
-                  {reportCardData.subjects.reduce((sum, subject) => sum + subject.ca2, 0)}
-                </td>
-                <td className="border border-[#2d682d] print:border-black p-3 text-center font-bold">
-                  {reportCardData.subjects.reduce((sum, subject) => sum + subject.assignment, 0)}
-                </td>
-                <td className="border border-[#2d682d] print:border-black p-3 text-center font-bold">
-                  {reportCardData.subjects.reduce(
-                    (sum, subject) => sum + subject.ca1 + subject.ca2 + subject.assignment,
-                    0,
-                  )}
-                </td>
-                <td className="border border-[#2d682d] print:border-black p-3 text-center font-bold">
-                  {reportCardData.subjects.reduce((sum, subject) => sum + subject.exam, 0)}
-                </td>
+                <td className="border border-[#2d682d] print:border-black p-3 text-center font-bold">{totals.exam}</td>
                 <td className="border border-[#2d682d] print:border-black p-3 text-center font-bold text-lg text-[#b29032] print:text-black">
                   {reportCardData.totalObtained}
                 </td>
@@ -450,13 +318,13 @@ export function EnhancedReportCard({ data }: { data?: ReportCardData }) {
                 <div className="flex items-center gap-4">
                   <span className="font-bold uppercase text-sm text-[#2d682d] print:text-black">VACATION DATE:</span>
                   <div className="border-b-2 border-[#2d682d] print:border-black flex-1 pb-1">
-                    {reportCardData.vacationDate || ""}
+                    {reportCardData.metadata?.vacationDate || ""}
                   </div>
                 </div>
                 <div className="flex items-center gap-4">
                   <span className="font-bold uppercase text-sm text-[#2d682d] print:text-black">RESUMPTION DATE:</span>
                   <div className="border-b-2 border-[#2d682d] print:border-black flex-1 pb-1">
-                    {reportCardData.resumptionDate || ""}
+                    {reportCardData.metadata?.resumptionDate || ""}
                   </div>
                 </div>
               </div>
