@@ -17,13 +17,21 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
+    const { studentId, staffName, staffRole, agenda, scheduledFor, location } = body ?? {};
+
+    if (!studentId || !staffName || !scheduledFor || !agenda) {
+      return NextResponse.json(
+        { error: "Missing required fields: studentId, staffName, scheduledFor, agenda." },
+        { status: 400 },
+      );
+    }
     const meeting = scheduleParentMeeting({
-      studentId: body?.studentId,
-      staffName: body?.staffName,
-      staffRole: body?.staffRole,
-      agenda: body?.agenda,
-      scheduledFor: body?.scheduledFor,
-      location: body?.location ?? "virtual",
+      studentId,
+      staffName,
+      staffRole,
+      agenda,
+      scheduledFor,
+      location: location ?? "virtual",
     });
     return NextResponse.json(meeting, { status: 201 });
   } catch (error: any) {

@@ -72,34 +72,38 @@ export function ParentPaymentCenter() {
     load();
   }, [load]);
 
-  const submit = React.useCallback(async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!form.studentId || !form.amount) return;
-    setSubmitting(true);
-    setMessage(null);
-    setError(null);
-    try {
-      const res = await fetch("/api/parent/financials", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          studentId: form.studentId,
-          amount: Number(form.amount),
-          method: form.method,
-          notes: form.notes || undefined,
-        }),
-      });
-      if (!res.ok) throw new Error(await res.text().catch(() => "Unable to process payment."));
-      const payment = await res.json();
-      setMessage(`Payment reference ${payment.reference} logged successfully.`);
-      setForm((prev) => ({ ...prev, amount: "", notes: "" }));
-      load();
-    } catch (err: any) {
-      setError(err?.message ?? "Unable to process payment.");
-    } finally {
-      setSubmitting(false);
-    }
-  }, [form, load]);
+  const { studentId, amount, method, notes } = form;
+  const submit = React.useCallback(
+    async (event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      if (!studentId || !amount) return;
+      setSubmitting(true);
+      setMessage(null);
+      setError(null);
+      try {
+        const res = await fetch("/api/parent/financials", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            studentId,
+            amount: Number(amount),
+            method,
+            notes: notes || undefined,
+          }),
+        });
+        if (!res.ok) throw new Error(await res.text().catch(() => "Unable to process payment."));
+        const payment = await res.json();
+        setMessage(`Payment reference ${payment.reference} logged successfully.`);
+        setForm((prev) => ({ ...prev, amount: "", notes: "" }));
+        load();
+      } catch (err: any) {
+        setError(err?.message ?? "Unable to process payment.");
+      } finally {
+        setSubmitting(false);
+      }
+    },
+    [studentId, amount, method, notes, load],
+  );
 
   const studentName = React.useCallback(
     (studentId: string) => students.find((student) => student.id === studentId)?.name ?? "Unknown",

@@ -599,6 +599,15 @@ export function recordParentPayment(input: {
     throw new Error("Student financial account not found");
   }
 
+  if (typeof input.amount !== "number" || !Number.isFinite(input.amount) || input.amount <= 0) {
+    throw new Error("Invalid payment amount");
+  }
+
+  const allowedMethods: PaymentMethod[] = ["bank-transfer", "card", "cash"];
+  if (!allowedMethods.includes(input.method)) {
+    throw new Error("Invalid payment method");
+  }
+
   const payment: ParentPayment = {
     id: randomUUID(),
     studentId: input.studentId,
@@ -614,9 +623,7 @@ export function recordParentPayment(input: {
   account.balance = Math.max(account.balance - input.amount, 0);
   account.lastPaymentDate = payment.processedAt;
 
-  if (payment.amount > 0) {
-    payment.status = "completed";
-  }
+  payment.status = "completed";
 
   return clone(payment);
 }

@@ -615,11 +615,15 @@ export function updateStudentAssignment(id: string, updates: StudentAssignmentUp
     next.submittedAt = new Date().toISOString();
     next.progress = 1;
   }
+  const feedbackParts: string[] = [];
   if (typeof updates.submissionLink === "string") {
-    next.feedback = `Submitted via portal: ${updates.submissionLink.trim()}`;
+    feedbackParts.push(`Submitted via portal: ${updates.submissionLink.trim()}`);
   }
   if (typeof updates.notes === "string" && updates.notes.trim()) {
-    next.feedback = updates.notes.trim();
+    feedbackParts.push(updates.notes.trim());
+  }
+  if (feedbackParts.length > 0) {
+    next.feedback = feedbackParts.join("\n");
   }
 
   state.assignments[assignmentIndex] = next;
