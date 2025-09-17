@@ -16,7 +16,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const payload = await request.json().catch(() => ({}));
+    const payload = await request.json();
     const topic = typeof payload?.topic === "string" ? payload.topic.trim() : "";
     const description = typeof payload?.description === "string" ? payload.description.trim() : "";
 

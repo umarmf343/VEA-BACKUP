@@ -93,13 +93,19 @@ export function TeacherAssignmentCenter() {
     setSubmitting(true);
     setError(null);
     try {
+      const due = new Date(form.dueDate);
+      if (Number.isNaN(due.getTime())) {
+        setError("Please provide a valid due date and time.");
+        setSubmitting(false);
+        return;
+      }
       const res = await fetch("/api/teacher/assignments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: form.title.trim(),
           classId: form.classId,
-          dueDate: new Date(form.dueDate).toISOString(),
+          dueDate: due.toISOString(),
           description: form.description.trim(),
         }),
       });

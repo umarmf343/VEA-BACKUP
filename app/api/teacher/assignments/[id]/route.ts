@@ -14,8 +14,15 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     const payload = await request.json();
     const updates: Record<string, unknown> = payload ?? {};
 
+    const ALLOWED_STATUSES = ["pending", "submitted", "graded", "returned"] as const;
+    type AllowedStatus = (typeof ALLOWED_STATUSES)[number];
+    const status =
+      typeof updates.status === "string" && (ALLOWED_STATUSES as readonly string[]).includes(updates.status)
+        ? (updates.status as AllowedStatus)
+        : undefined;
+
     const result = updateTeacherAssignment(assignmentId, {
-      status: typeof updates.status === "string" ? (updates.status as any) : undefined,
+      status,
       submissionsPending:
         typeof updates.submissionsPending === "number" ? Number(updates.submissionsPending) : undefined,
       submissionsGraded:

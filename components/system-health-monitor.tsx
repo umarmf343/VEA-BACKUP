@@ -126,7 +126,7 @@ export function SystemHealthMonitor() {
           serverStatus: isStatusLevel(payload.serverStatus) ? payload.serverStatus : previous.serverStatus,
           databaseStatus: isStatusLevel(payload.databaseStatus) ? payload.databaseStatus : previous.databaseStatus,
           overallStatus: isStatusLevel(payload.overallStatus) ? payload.overallStatus : previous.overallStatus,
-          updatedAt: typeof payload.updatedAt === "string" ? payload.updatedAt : new Date().toISOString(),
+          updatedAt: typeof payload.updatedAt === "string" ? payload.updatedAt : previous.updatedAt,
         }));
         setError(null);
       } catch (err) {

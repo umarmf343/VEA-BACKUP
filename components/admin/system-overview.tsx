@@ -52,7 +52,10 @@ export function SystemOverview() {
         }
 
         const payload = await response.json()
-        const overview = payload?.overview as Partial<OverviewStats>
+        const overview =
+          typeof payload?.overview === "object" && payload?.overview
+            ? (payload.overview as Partial<OverviewStats>)
+            : {}
         setStats({ ...INITIAL_STATS, ...overview })
       } catch (err) {
         const message = err instanceof Error ? err.message : "Failed to load overview"

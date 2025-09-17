@@ -372,6 +372,9 @@ export function mutateAdminNotifications(
     if (ids && ids.length > 0) {
       return targetIds.has(notification.id);
     }
+    if (action === "archive") {
+      return false;
+    }
     return matchesRole(notification) && !notification.archived;
   };
 
