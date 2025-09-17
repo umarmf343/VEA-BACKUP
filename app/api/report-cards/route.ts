@@ -8,6 +8,8 @@ import {
   updateReportCardStatus,
 } from "@/lib/report-card-service"
 import type { ReportCardStatus } from "@/lib/report-card-types"
+import { requireAuth, isHttpError } from "@/lib/api-auth"
+import { hasPermission } from "@/lib/security"
 
 export const runtime = "nodejs"
 
@@ -19,6 +21,7 @@ function parseStatus(value: unknown): ReportCardStatus | undefined {
 
 export async function GET(request: NextRequest) {
   try {
+    const actor = requireAuth(request)
     const { searchParams } = new URL(request.url)
     const studentId = searchParams.get("studentId")
     const term = searchParams.get("term")
@@ -32,12 +35,24 @@ export async function GET(request: NextRequest) {
         )
       }
 
+      if (actor.role === "Student" && actor.userId !== studentId) {
+        return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 })
+      }
+
+      if (actor.role !== "Student" && !hasPermission(actor.role, ["Teacher", "Admin", "Super Admin"])) {
+        return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 })
+      }
+
       const reportCard = await getReportCard(studentId, term, session)
       if (!reportCard) {
         return NextResponse.json({ error: "Report card not found" }, { status: 404 })
       }
 
       return NextResponse.json({ data: reportCard })
+    }
+
+    if (!hasPermission(actor.role, ["Admin", "Super Admin"])) {
+      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 })
     }
 
     const filters = {
@@ -50,6 +65,9 @@ export async function GET(request: NextRequest) {
     const reportCards = await listReportCards(filters)
     return NextResponse.json({ data: reportCards })
   } catch (error) {
+    if (isHttpError(error)) {
+      return NextResponse.json({ error: error.message }, { status: error.status })
+    }
     console.error("Failed to fetch report cards", error)
     return NextResponse.json({ error: "Failed to fetch report cards" }, { status: 500 })
   }
@@ -57,9 +75,14 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const actor = requireAuth(request)
     const body = await request.json()
 
     if (body.action === "subject-assessment") {
+      if (!hasPermission(actor.role, ["Teacher", "Admin", "Super Admin"])) {
+        return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 })
+      }
+
       const reportCard = await submitSubjectAssessment({
         studentId: body.student?.id || body.studentId,
         studentName: body.student?.name || body.studentName,
@@ -73,8 +96,8 @@ export async function POST(request: NextRequest) {
         remarks: body.remarks,
         term: body.term,
         session: body.session,
-        teacherId: body.teacher?.id || body.teacherId,
-        teacherName: body.teacher?.name || body.teacherName,
+        teacherId: actor.userId,
+        teacherName: actor.name || body.teacher?.name || body.teacherName,
         status: parseStatus(body.status),
       })
 
@@ -85,6 +108,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Student payload is required" }, { status: 400 })
     }
 
+    if (!hasPermission(actor.role, ["Teacher", "Admin", "Super Admin"])) {
+      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 })
+    }
+
     const reportCard = await saveCompleteReportCard({
       studentId: body.student.id,
       studentName: body.student.name,
@@ -92,8 +119,8 @@ export async function POST(request: NextRequest) {
       className: body.student.class,
       term: body.term,
       session: body.session,
-      teacherId: body.teacher?.id || body.teacherId,
-      teacherName: body.teacher?.name || body.teacherName,
+      teacherId: actor.userId,
+      teacherName: actor.name || body.teacher?.name || body.teacherName,
       subjects: (body.subjects || []).map((subject: any) => ({
         name: subject.name,
         ca1: Number(subject.ca1 || 0),
@@ -111,6 +138,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ data: reportCard })
   } catch (error) {
+    if (isHttpError(error)) {
+      return NextResponse.json({ error: error.message }, { status: error.status })
+    }
     console.error("Failed to save report card", error)
     return NextResponse.json({ error: "Failed to save report card" }, { status: 500 })
   }
@@ -118,12 +148,17 @@ export async function POST(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
+    const actor = requireAuth(request)
     const body = await request.json()
 
     if (body.action === "override") {
-      if (!body.studentId || !body.term || !body.session || !body.adminId || !body.reason) {
+      if (!hasPermission(actor.role, ["Admin", "Super Admin"])) {
+        return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 })
+      }
+
+      if (!body.studentId || !body.term || !body.session || !body.reason) {
         return NextResponse.json(
-          { error: "studentId, term, session, adminId and reason are required for overrides" },
+          { error: "studentId, term, session and reason are required for overrides" },
           { status: 400 },
         )
       }
@@ -133,11 +168,15 @@ export async function PATCH(request: NextRequest) {
         term: body.term,
         session: body.session,
         overrides: body.overrides || {},
-        adminId: body.adminId,
+        adminId: actor.userId,
         reason: body.reason,
       })
 
       return NextResponse.json({ data: reportCard })
+    }
+
+    if (!hasPermission(actor.role, ["Admin", "Super Admin"])) {
+      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 })
     }
 
     if (!body.studentId || !body.term || !body.session || !body.status) {
@@ -153,12 +192,15 @@ export async function PATCH(request: NextRequest) {
       session: body.session,
       status: parseStatus(body.status) || "submitted",
       message: body.message,
-      actorId: body.actorId,
-      actorRole: body.actorRole,
+      actorId: actor.userId,
+      actorRole: actor.role,
     })
 
     return NextResponse.json({ data: reportCard })
   } catch (error) {
+    if (isHttpError(error)) {
+      return NextResponse.json({ error: error.message }, { status: error.status })
+    }
     console.error("Failed to update report card status", error)
     return NextResponse.json({ error: "Failed to update report card" }, { status: 500 })
   }

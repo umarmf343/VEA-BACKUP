@@ -189,10 +189,35 @@ function ensureAdmissionNumber(studentId: string, admissionNumber?: string) {
 function updateClassPositions(records: ReportCardRecord[], className: string, term: string, session: string) {
   const classRecords = records
     .filter((record) => record.className === className && record.term === term && record.session === session)
-    .sort((a, b) => b.average - a.average)
+    .sort((a, b) => {
+      const avgDiff = b.average - a.average
+      if (Math.abs(avgDiff) > 0.0001) {
+        return avgDiff
+      }
 
-  classRecords.forEach((record, index) => {
-    record.position = formatOrdinal(index + 1)
+      const totalDiff = (b.totalObtained || 0) - (a.totalObtained || 0)
+      if (Math.abs(totalDiff) > 0.0001) {
+        return totalDiff
+      }
+
+      return a.studentName.localeCompare(b.studentName)
+    })
+
+  let lastAverage: number | null = null
+  let lastAssignedPosition = 0
+  let rankCounter = 0
+
+  classRecords.forEach((record) => {
+    rankCounter += 1
+
+    if (lastAverage !== null && Math.abs(record.average - lastAverage) < 0.0001) {
+      record.position = formatOrdinal(lastAssignedPosition)
+    } else {
+      lastAverage = record.average
+      lastAssignedPosition = rankCounter
+      record.position = formatOrdinal(rankCounter)
+    }
+
     record.metadata = {
       ...record.metadata,
       numberInClass: classRecords.length,

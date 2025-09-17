@@ -1,35 +1,22 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { marksSchema } from "@/lib/validation-schemas"
-import { verifyToken } from "@/lib/security"
+
+import { requireAuth, isHttpError } from "@/lib/api-auth"
 import { getReportCard, submitSubjectAssessment } from "@/lib/report-card-service"
+import { hasPermission } from "@/lib/security"
+import { marksSchema } from "@/lib/validation-schemas"
 
 export const runtime = "nodejs"
 
 export async function POST(request: NextRequest) {
   try {
+    const actor = requireAuth(request)
+
+    if (!hasPermission(actor.role, ["Teacher", "Admin", "Super Admin"])) {
+      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 })
+    }
+
     const body = await request.json()
     const validatedData = marksSchema.parse(body)
-
-    const authHeader = request.headers.get("authorization")
-    let actor: { userId: string; role: string; name?: string } = {
-      userId: body.teacherId || "teacher",
-      role: "Teacher",
-      name: body.teacherName,
-    }
-
-    if (authHeader?.startsWith("Bearer ")) {
-      const token = authHeader.substring(7)
-      try {
-        const decoded = verifyToken(token)
-        actor = {
-          userId: decoded.userId || decoded.id || actor.userId,
-          role: decoded.role || actor.role,
-          name: decoded.name || actor.name,
-        }
-      } catch (error) {
-        console.warn("Invalid token supplied for marks submission", error)
-      }
-    }
 
     const reportCard = await submitSubjectAssessment({
       studentId: validatedData.studentId,
@@ -54,6 +41,9 @@ export async function POST(request: NextRequest) {
       data: reportCard,
     })
   } catch (error) {
+    if (isHttpError(error)) {
+      return NextResponse.json({ error: error.message }, { status: error.status })
+    }
     console.error("Marks save error:", error)
     return NextResponse.json({ error: "Failed to save marks" }, { status: 500 })
   }
@@ -61,6 +51,8 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
+    const actor = requireAuth(request)
+
     const { searchParams } = new URL(request.url)
     const studentId = searchParams.get("studentId")
     const term = searchParams.get("term")
@@ -71,6 +63,14 @@ export async function GET(request: NextRequest) {
         { error: "studentId, term and session query parameters are required" },
         { status: 400 },
       )
+    }
+
+    if (actor.role === "Student" && actor.userId !== studentId) {
+      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 })
+    }
+
+    if (actor.role !== "Student" && !hasPermission(actor.role, ["Teacher", "Admin", "Super Admin"])) {
+      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 })
     }
 
     const reportCard = await getReportCard(studentId, term, session)
@@ -84,6 +84,9 @@ export async function GET(request: NextRequest) {
       reportCard,
     })
   } catch (error) {
+    if (isHttpError(error)) {
+      return NextResponse.json({ error: error.message }, { status: error.status })
+    }
     console.error("Marks fetch error:", error)
     return NextResponse.json({ error: "Failed to fetch marks" }, { status: 500 })
   }
