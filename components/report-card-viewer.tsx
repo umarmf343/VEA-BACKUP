@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { EnhancedReportCard } from "@/components/enhanced-report-card"
-import { getStudentReportCardData } from "@/lib/report-card-data"
+import type { ReportCardResponse } from "@/lib/report-card-types"
 
 interface ReportCardViewerProps {
   studentId: string
@@ -17,7 +17,7 @@ interface ReportCardViewerProps {
 export function ReportCardViewer({ studentId, studentName, userRole, hasAccess }: ReportCardViewerProps) {
   const [selectedTerm, setSelectedTerm] = useState("First Term")
   const [selectedSession, setSelectedSession] = useState("2024/2025")
-  const [reportCardData, setReportCardData] = useState<any>(null)
+  const [reportCardData, setReportCardData] = useState<ReportCardResponse | null>(null)
   const [loading, setLoading] = useState(false)
 
   const loadReportCard = async () => {
@@ -28,13 +28,25 @@ export function ReportCardViewer({ studentId, studentName, userRole, hasAccess }
 
     setLoading(true)
     try {
-      const data = getStudentReportCardData(studentId, selectedTerm, selectedSession)
+      const params = new URLSearchParams({
+        studentId,
+        term: selectedTerm,
+        session: selectedSession,
+      })
 
-      if (data) {
-        setReportCardData(data)
-      } else {
-        alert("No report card data found for the selected term and session.")
+      const response = await fetch(`/api/report-cards?${params.toString()}`)
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          alert("No report card data found for the selected term and session.")
+          setReportCardData(null)
+          return
+        }
+        throw new Error(`Failed to load report card: ${response.statusText}`)
       }
+
+      const payload = (await response.json()) as { data: ReportCardResponse }
+      setReportCardData(payload.data)
     } catch (error) {
       console.error("Error loading report card:", error)
       alert("Error loading report card. Please try again.")
