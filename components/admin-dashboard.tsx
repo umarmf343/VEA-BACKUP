@@ -7,7 +7,13 @@
 // - Inconsistent metric cards and spacing
 //
 // Expected API (adjust if your routes differ):
-//   GET /api/dashboard/admin -> { users: number; paymentsToday: number; notices: number }
+//   GET /api/dashboard/admin -> {
+//     users: number;
+//     paymentsToday: number;
+//     notices: number;
+//     activeUsers: number;
+//     pendingApprovals: number;
+//   }
 //
 // Dependencies: uses global token classes from app/globals.css and cn().
 
@@ -20,6 +26,8 @@ type AdminData = {
   users: number;
   paymentsToday: number;
   notices: number;
+  activeUsers: number;
+  pendingApprovals: number;
 };
 
 const ENDPOINT = "/api/dashboard/admin";
@@ -44,6 +52,8 @@ export default function AdminDashboard() {
         users: Number(json.users ?? 0),
         paymentsToday: Number(json.paymentsToday ?? 0),
         notices: Number(json.notices ?? 0),
+        activeUsers: Number(json.activeUsers ?? json.users ?? 0),
+        pendingApprovals: Number(json.pendingApprovals ?? 0),
       };
       setData(safe);
     } catch (err: any) {
@@ -66,7 +76,7 @@ export default function AdminDashboard() {
       <header className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-lg font-semibold">Admin Dashboard</h2>
-          <p className="text-sm text-muted-foreground">Users, payments, and notices at a glance.</p>
+          <p className="text-sm text-muted-foreground">Users, payments, and approvals at a glance.</p>
         </div>
 
         <button
@@ -103,21 +113,37 @@ export default function AdminDashboard() {
           <SkeletonCard />
         </div>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <MetricCard title="Total Users" value={data?.users ?? 0} />
+          <MetricCard title="Active Users" value={data?.activeUsers ?? 0} />
           <MetricCard title="Payments Today" value={data?.paymentsToday ?? 0} />
-          <MetricCard title="Active Notices" value={data?.notices ?? 0} />
+          <MetricCard title="Pending Approvals" value={data?.pendingApprovals ?? 0} emphasis />
         </div>
       )}
     </section>
   );
 }
 
-function MetricCard({ title, value }: { title: string; value: number }) {
+function MetricCard({
+  title,
+  value,
+  emphasis = false,
+}: {
+  title: string;
+  value: number;
+  emphasis?: boolean;
+}) {
   return (
-    <div className="rounded-xl border bg-card p-4">
-      <div className="text-sm text-muted-foreground">{title}</div>
-      <div className="mt-1 text-2xl font-semibold tabular-nums">{value}</div>
+    <div
+      className={cn(
+        "rounded-xl border bg-card p-4",
+        emphasis ? "border-[#b29032]/40 bg-[#b29032]/10" : "border-[hsl(var(--input))]"
+      )}
+    >
+      <div className={cn("text-sm", emphasis ? "text-[#b29032]" : "text-muted-foreground")}>{title}</div>
+      <div className={cn("mt-1 text-2xl font-semibold tabular-nums", emphasis ? "text-[#b29032]" : undefined)}>
+        {value}
+      </div>
     </div>
   );
 }

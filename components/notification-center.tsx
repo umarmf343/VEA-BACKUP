@@ -1,139 +1,195 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { ScrollArea } from "@/components/ui/scroll-area"
+import * as React from "react";
 import {
-  Bell,
-  Check,
-  X,
   AlertCircle,
-  Info,
-  CheckCircle,
   AlertTriangle,
-  Clock,
-  User,
+  Bell,
   BookOpen,
+  Check,
+  CheckCircle,
   DollarSign,
-} from "lucide-react"
+  Info,
+  Loader2,
+  User,
+  X,
+} from "lucide-react";
 
-interface Notification {
-  id: string
-  type: "info" | "success" | "warning" | "error"
-  title: string
-  message: string
-  timestamp: Date
-  read: boolean
-  category: "system" | "academic" | "payment" | "user"
-  actionRequired?: boolean
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
+
+const ENDPOINTS: Record<string, string> = {
+  "super-admin": "/api/super-admin/notifications",
+  admin: "/api/admin/notifications",
+};
+const POLL_INTERVAL = 90_000;
+
+function resolveEndpoint(role: string | undefined) {
+  if (!role) return ENDPOINTS["super-admin"];
+  return ENDPOINTS[role] ?? ENDPOINTS["super-admin"];
+}
+
+type NotificationType = "info" | "success" | "warning" | "error";
+
+type NotificationCategory = "system" | "academic" | "payment" | "user" | "security";
+
+type NotificationAction =
+  | "mark-read"
+  | "mark-unread"
+  | "mark-all-read"
+  | "mark-all-unread"
+  | "archive";
+
+interface NotificationItem {
+  id: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  timestamp: string;
+  read: boolean;
+  category: NotificationCategory;
+  actionRequired?: boolean;
+  readAt?: string | null;
 }
 
 interface NotificationCenterProps {
-  userRole: string
+  userRole: string;
+}
+
+const TYPE_CLASSES: Record<NotificationType, string> = {
+  info: "text-blue-600 bg-blue-50 border-blue-200",
+  success: "text-green-600 bg-green-50 border-green-200",
+  warning: "text-yellow-600 bg-yellow-50 border-yellow-200",
+  error: "text-red-600 bg-red-50 border-red-200",
+};
+
+const CATEGORY_ICONS: Partial<Record<NotificationCategory, typeof User>> = {
+  payment: DollarSign,
+  academic: BookOpen,
+  user: User,
+  security: AlertTriangle,
+};
+
+function getIcon(type: NotificationType, category: NotificationCategory) {
+  if (CATEGORY_ICONS[category]) {
+    return CATEGORY_ICONS[category]!;
+  }
+  switch (type) {
+    case "success":
+      return CheckCircle;
+    case "warning":
+      return AlertTriangle;
+    case "error":
+      return AlertCircle;
+    default:
+      return Info;
+  }
+}
+
+function formatTimestamp(iso: string) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const diffMs = Date.now() - date.getTime();
+  const minutes = Math.round(diffMs / 60_000);
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  return `${days}d ago`;
 }
 
 export function NotificationCenter({ userRole }: NotificationCenterProps) {
-  const [notifications, setNotifications] = useState<Notification[]>([
-    {
-      id: "1",
-      type: "info",
-      title: "New Student Enrollment",
-      message: "5 new students have been enrolled in JSS 1A",
-      timestamp: new Date(Date.now() - 1000 * 60 * 30), // 30 minutes ago
-      read: false,
-      category: "academic",
-    },
-    {
-      id: "2",
-      type: "success",
-      title: "Payment Received",
-      message: "School fees payment of ₦50,000 received from John Doe",
-      timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2), // 2 hours ago
-      read: false,
-      category: "payment",
-    },
-    {
-      id: "3",
-      type: "warning",
-      title: "System Maintenance",
-      message: "Scheduled maintenance will occur tonight at 11:00 PM",
-      timestamp: new Date(Date.now() - 1000 * 60 * 60 * 4), // 4 hours ago
-      read: true,
-      category: "system",
-      actionRequired: true,
-    },
-    {
-      id: "4",
-      type: "info",
-      title: "Grade Submission Reminder",
-      message: "Please submit grades for Mathematics by end of week",
-      timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24), // 1 day ago
-      read: true,
-      category: "academic",
-    },
-  ])
+  const [notifications, setNotifications] = React.useState<NotificationItem[]>([]);
+  const [showUnreadOnly, setShowUnreadOnly] = React.useState(false);
+  const [loading, setLoading] = React.useState(true);
+  const [isMutating, setIsMutating] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const abortRef = React.useRef<AbortController | null>(null);
+  const endpoint = React.useMemo(() => resolveEndpoint(userRole), [userRole]);
 
-  const [showUnreadOnly, setShowUnreadOnly] = useState(false)
+  const fetchNotifications = React.useCallback(async () => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
 
-  const unreadCount = notifications.filter((n) => !n.read).length
+    setLoading(true);
+    try {
+      const url = userRole ? `${endpoint}?role=${encodeURIComponent(userRole)}` : endpoint;
+      const response = await fetch(url, { cache: "no-store", signal: controller.signal });
+      if (!response.ok) {
+        throw new Error((await response.text()) || "Unable to load notifications");
+      }
 
-  const getNotificationIcon = (type: string, category: string) => {
-    if (category === "payment") return <DollarSign className="h-4 w-4" />
-    if (category === "academic") return <BookOpen className="h-4 w-4" />
-    if (category === "user") return <User className="h-4 w-4" />
-
-    switch (type) {
-      case "success":
-        return <CheckCircle className="h-4 w-4" />
-      case "warning":
-        return <AlertTriangle className="h-4 w-4" />
-      case "error":
-        return <AlertCircle className="h-4 w-4" />
-      default:
-        return <Info className="h-4 w-4" />
+      const payload = await response.json();
+      if (controller.signal.aborted) return;
+      const items = Array.isArray(payload.notifications)
+        ? (payload.notifications as NotificationItem[])
+        : [];
+      const sorted = items
+        .slice()
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      setNotifications(sorted);
+      setError(null);
+    } catch (err) {
+      if (controller.signal.aborted) return;
+      setError(err instanceof Error ? err.message : "Failed to load notifications");
+    } finally {
+      if (!controller.signal.aborted) {
+        setLoading(false);
+      }
     }
-  }
+  }, [endpoint, userRole]);
 
-  const getNotificationColor = (type: string) => {
-    switch (type) {
-      case "success":
-        return "text-green-600 bg-green-50 border-green-200"
-      case "warning":
-        return "text-yellow-600 bg-yellow-50 border-yellow-200"
-      case "error":
-        return "text-red-600 bg-red-50 border-red-200"
-      default:
-        return "text-blue-600 bg-blue-50 border-blue-200"
-    }
-  }
+  React.useEffect(() => {
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, POLL_INTERVAL);
+    return () => {
+      abortRef.current?.abort();
+      clearInterval(interval);
+    };
+  }, [fetchNotifications]);
 
-  const markAsRead = (id: string) => {
-    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)))
-  }
+  const mutateNotifications = React.useCallback(
+    async (action: NotificationAction, ids?: string[]) => {
+      setIsMutating(true);
+      try {
+        const response = await fetch(endpoint, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action, ids, role: userRole }),
+        });
+        if (!response.ok) {
+          throw new Error((await response.text()) || "Notification update failed");
+        }
 
-  const markAllAsRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
-  }
+        const payload = await response.json();
+        const items = Array.isArray(payload.notifications)
+          ? (payload.notifications as NotificationItem[])
+          : [];
+        const sorted = items
+          .slice()
+          .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+        setNotifications(sorted);
+        setError(null);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Notification update failed");
+      } finally {
+        setIsMutating(false);
+      }
+    },
+    [endpoint, userRole],
+  );
 
-  const deleteNotification = (id: string) => {
-    setNotifications((prev) => prev.filter((n) => n.id !== id))
-  }
+  const markAsRead = React.useCallback((id: string) => mutateNotifications("mark-read", [id]), [mutateNotifications]);
+  const markAsUnread = React.useCallback((id: string) => mutateNotifications("mark-unread", [id]), [mutateNotifications]);
+  const markAllAsRead = React.useCallback(() => mutateNotifications("mark-all-read"), [mutateNotifications]);
+  const archiveNotification = React.useCallback((id: string) => mutateNotifications("archive", [id]), [mutateNotifications]);
 
-  const formatTimestamp = (timestamp: Date) => {
-    const now = new Date()
-    const diff = now.getTime() - timestamp.getTime()
-    const minutes = Math.floor(diff / (1000 * 60))
-    const hours = Math.floor(diff / (1000 * 60 * 60))
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24))
-
-    if (minutes < 60) return `${minutes}m ago`
-    if (hours < 24) return `${hours}h ago`
-    return `${days}d ago`
-  }
-
-  const filteredNotifications = showUnreadOnly ? notifications.filter((n) => !n.read) : notifications
+  const unreadNotifications = notifications.filter((notification) => !notification.read);
+  const filteredNotifications = showUnreadOnly ? unreadNotifications : notifications;
 
   return (
     <Card className="border-[#2d682d]/20">
@@ -142,9 +198,9 @@ export function NotificationCenter({ userRole }: NotificationCenterProps) {
           <div className="flex items-center gap-2">
             <div className="relative">
               <Bell className="h-5 w-5 text-[#2d682d]" />
-              {unreadCount > 0 && (
-                <Badge className="absolute -top-2 -right-2 h-5 w-5 p-0 flex items-center justify-center bg-red-500 text-white text-xs">
-                  {unreadCount}
+              {unreadNotifications.length > 0 && (
+                <Badge className="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center bg-red-500 text-white text-xs">
+                  {unreadNotifications.length}
                 </Badge>
               )}
             </div>
@@ -152,102 +208,120 @@ export function NotificationCenter({ userRole }: NotificationCenterProps) {
           </div>
           <div className="flex items-center gap-2">
             <Button
-              onClick={() => setShowUnreadOnly(!showUnreadOnly)}
+              onClick={() => setShowUnreadOnly((prev) => !prev)}
               variant="outline"
               size="sm"
+              disabled={loading || isMutating}
               className="border-[#2d682d]/20"
             >
               {showUnreadOnly ? "Show All" : "Unread Only"}
             </Button>
-            {unreadCount > 0 && (
-              <Button
-                onClick={markAllAsRead}
-                variant="outline"
-                size="sm"
-                className="border-[#2d682d]/20 bg-transparent"
-              >
-                <Check className="h-4 w-4 mr-1" />
-                Mark All Read
-              </Button>
-            )}
+            <Button
+              onClick={markAllAsRead}
+              variant="outline"
+              size="sm"
+              disabled={loading || isMutating || unreadNotifications.length === 0}
+              className="border-[#2d682d]/20 bg-transparent"
+            >
+              <Check className="mr-1 h-4 w-4" />
+              Mark All Read
+            </Button>
           </div>
         </div>
         <CardDescription>
-          {unreadCount > 0 ? `${unreadCount} unread notifications` : "All notifications read"}
+          {loading && notifications.length === 0
+            ? "Loading notifications..."
+            : unreadNotifications.length > 0
+              ? `${unreadNotifications.length} unread notifications`
+              : "All notifications are up to date"}
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <ScrollArea className="h-96">
-          <div className="space-y-3">
-            {filteredNotifications.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                <Bell className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p>No notifications to display</p>
-              </div>
-            ) : (
-              filteredNotifications.map((notification) => (
-                <div
-                  key={notification.id}
-                  className={`p-4 rounded-lg border transition-all duration-200 ${
-                    notification.read ? "bg-gray-50 border-gray-200" : "bg-white border-[#2d682d]/20 shadow-sm"
-                  }`}
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start gap-3 flex-1">
-                      <div className={`p-2 rounded-full ${getNotificationColor(notification.type)}`}>
-                        {getNotificationIcon(notification.type, notification.category)}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <h4 className={`font-medium ${notification.read ? "text-gray-700" : "text-gray-900"}`}>
-                            {notification.title}
-                          </h4>
-                          {!notification.read && <div className="w-2 h-2 bg-[#2d682d] rounded-full"></div>}
+        {error && (
+          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>
+        )}
+
+        {loading && notifications.length === 0 ? (
+          <div className="flex h-48 flex-col items-center justify-center gap-2 text-[#2d682d]">
+            <Loader2 className="h-6 w-6 animate-spin" />
+            <span className="text-sm">Loading notifications...</span>
+          </div>
+        ) : filteredNotifications.length === 0 ? (
+          <div className="text-center py-10 text-gray-500">
+            <Bell className="mx-auto mb-4 h-12 w-12 opacity-50" />
+            <p>No notifications to display</p>
+          </div>
+        ) : (
+          <ScrollArea className="h-96">
+            <div className="space-y-3">
+              {filteredNotifications.map((notification) => {
+                const Icon = getIcon(notification.type, notification.category);
+                const colorClass = TYPE_CLASSES[notification.type];
+
+                return (
+                  <div
+                    key={notification.id}
+                    className={`rounded-lg border p-4 transition-all duration-200 ${
+                      notification.read ? "bg-gray-50 border-gray-200" : "bg-white border-[#2d682d]/20 shadow-sm"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-start gap-3 flex-1">
+                        <div className={`flex h-10 w-10 items-center justify-center rounded-full border ${colorClass}`}>
+                          <Icon className="h-4 w-4" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <h4 className="text-sm font-semibold text-[#2d682d]">{notification.title}</h4>
+                            <span className="text-xs text-muted-foreground">{formatTimestamp(notification.timestamp)}</span>
+                          </div>
+                          <p className="mt-1 text-sm text-gray-600">{notification.message}</p>
                           {notification.actionRequired && (
-                            <Badge variant="outline" className="text-xs border-orange-200 text-orange-700">
-                              Action Required
-                            </Badge>
+                            <Badge className="mt-2 w-fit bg-[#b29032]/10 text-[#b29032] border-[#b29032]/20">Action Required</Badge>
                           )}
                         </div>
-                        <p className={`text-sm ${notification.read ? "text-gray-500" : "text-gray-600"}`}>
-                          {notification.message}
-                        </p>
-                        <div className="flex items-center gap-2 mt-2">
-                          <Clock className="h-3 w-3 text-gray-400" />
-                          <span className="text-xs text-gray-400">{formatTimestamp(notification.timestamp)}</span>
-                          <Badge variant="outline" className="text-xs">
-                            {notification.category}
-                          </Badge>
-                        </div>
                       </div>
-                    </div>
-                    <div className="flex items-center gap-1 ml-2">
-                      {!notification.read && (
+                      <div className="flex flex-col items-end gap-2">
+                        {!notification.read ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={isMutating}
+                            onClick={() => markAsRead(notification.id)}
+                            className="text-[#2d682d]"
+                          >
+                            Mark Read
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={isMutating}
+                            onClick={() => markAsUnread(notification.id)}
+                            className="text-[#2d682d]"
+                          >
+                            Unread
+                          </Button>
+                        )}
                         <Button
-                          onClick={() => markAsRead(notification.id)}
                           variant="ghost"
                           size="sm"
-                          className="h-8 w-8 p-0"
+                          disabled={isMutating}
+                          onClick={() => archiveNotification(notification.id)}
+                          className="text-red-500"
                         >
-                          <Check className="h-4 w-4" />
+                          <X className="mr-1 h-4 w-4" />
+                          Archive
                         </Button>
-                      )}
-                      <Button
-                        onClick={() => deleteNotification(notification.id)}
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 w-8 p-0 text-gray-400 hover:text-red-600"
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))
-            )}
-          </div>
-        </ScrollArea>
+                );
+              })}
+            </div>
+          </ScrollArea>
+        )}
       </CardContent>
     </Card>
-  )
+  );
 }
