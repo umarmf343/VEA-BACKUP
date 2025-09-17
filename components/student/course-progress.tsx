@@ -130,7 +130,7 @@ export function StudentCourseProgress() {
                     <div className="space-y-1 text-xs">
                       <p className="font-medium text-foreground">Quick resources</p>
                       <ul className="space-y-1 text-muted-foreground">
-                        {course.supportResources.slice(0, 3).map((resource) => (
+                        {course.supportResources.slice(0, 3).map((resource: string) => (
                           <li key={resource} className="truncate">
                             <a
                               href={resource}

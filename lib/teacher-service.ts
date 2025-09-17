@@ -2,7 +2,7 @@ import { randomUUID } from "crypto";
 
 type DayOfWeek = "Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday";
 
-type ScheduleType = "lesson" | "meeting" | "duty" | "event";
+export type ScheduleType = "lesson" | "meeting" | "duty" | "event";
 
 type AssignmentStatus = "draft" | "assigned" | "submitted" | "graded";
 

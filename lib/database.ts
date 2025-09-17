@@ -25,6 +25,8 @@
 
 import * as React from "react";
 
+import { dbManager } from "./database-manager";
+
 /** Listener type for subscriptions */
 type Listener<T> = (state: T) => void;
 
@@ -202,6 +204,12 @@ export function shallowEqual(a: any, b: any) {
     if (!Object.prototype.hasOwnProperty.call(b, k) || !Object.is(a[k], b[k])) return false;
   }
   return true;
+}
+
+export async function getUserByEmail(email: string) {
+  const users = await dbManager.getAllUsers();
+  const normalized = email.trim().toLowerCase();
+  return users.find((user) => user.email.toLowerCase() === normalized) ?? null;
 }
 
 /**

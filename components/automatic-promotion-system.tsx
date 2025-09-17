@@ -158,11 +158,13 @@ export function AutomaticPromotionSystem() {
 
       // Save promotion analysis to database
       await dbManager.savePromotionAnalysis({
-        class: selectedClass,
-        session: promotionCriteria.currentSession,
-        criteria: promotionCriteria,
-        results,
-        analyzedAt: new Date().toISOString(),
+        classId: selectedClass,
+        summary: `Promotion analysis for ${selectedClass} (${promotionCriteria.currentSession})`,
+        recommendations: results.map((student) => ({
+          studentId: student.id,
+          status: student.status,
+          remarks: student.remarks,
+        })),
       })
     } catch (error) {
       console.error("Error analyzing promotions:", error)
@@ -183,7 +185,6 @@ export function AutomaticPromotionSystem() {
       // Update student records in database
       for (const student of eligibleStudents) {
         await dbManager.promoteStudent(student.id, {
-          fromClass: student.currentClass,
           toClass: student.nextClass,
           session: promotionCriteria.nextSession,
           promotedAt: new Date().toISOString(),
@@ -192,11 +193,10 @@ export function AutomaticPromotionSystem() {
 
       // Save promotion batch record
       await dbManager.saveBatchPromotion({
-        class: selectedClass,
-        session: promotionCriteria.currentSession,
-        nextSession: promotionCriteria.nextSession,
-        promotedStudents: eligibleStudents.map((s) => s.id),
-        promotedAt: new Date().toISOString(),
+        fromClass: selectedClass,
+        toClass: eligibleStudents[0]?.nextClass ?? selectedClass,
+        promotedStudentIds: eligibleStudents.map((s) => s.id),
+        performedBy: "system",
       })
 
       alert(`Successfully promoted ${eligibleStudents.length} students to the next class!`)

@@ -1,6 +1,64 @@
 import { safeStorage } from "@/lib/safe-storage"
 
-export const completeReportCardData = {
+type ReportCardSubject = {
+  name: string
+  firstCA: number
+  secondCA: number
+  noteAssignment: number
+  caTotal: number
+  exam: number
+  total: number
+  grade: string
+  teacherRemark: string
+}
+
+export type CompleteReportCard = {
+  student: {
+    id: number
+    name: string
+    admissionNumber: string
+    class: string
+    term: string
+    session: string
+    dateOfBirth: string
+    gender: string
+    photo: string
+  }
+  subjects: ReportCardSubject[]
+  summary: {
+    totalMarksObtainable: number
+    totalMarksObtained: number
+    averageScore: number
+    position: number
+    positionSuffix: string
+    numberOfStudents: number
+    classAverage: number
+    grade: string
+  }
+  affectiveDomain: Record<string, string>
+  psychomotorDomain: Record<string, string>
+  attendance: {
+    present: number
+    absent: number
+    total: number
+    percentage: number
+  }
+  remarks: {
+    classTeacher: string
+    headTeacher: string
+  }
+  nextTermBegins: string
+  vacationEnds: string
+  branding: {
+    schoolName: string
+    address: string
+    logo: string
+    headmasterSignature: string
+    headmasterName: string
+  }
+}
+
+export const completeReportCardData: Record<string, CompleteReportCard> = {
   // Complete report card data for John Doe - JSS 1A Mathematics
   "JSS 1A-Mathematics-first-2024/2025": {
     student: {
@@ -124,13 +182,13 @@ export const getCompleteReportCard = (
   subject: string,
   term: string,
   session: string,
-) => {
+): CompleteReportCard | null => {
   const key = `${className}-${subject}-${term}-${session}`
   return completeReportCardData[key] || null
 }
 
 // Function to save complete report card data
-export const saveCompleteReportCard = (key: string, data: any) => {
+export const saveCompleteReportCard = (key: string, data: CompleteReportCard) => {
   completeReportCardData[key] = data
   safeStorage.setItem("completeReportCardData", JSON.stringify(completeReportCardData))
 }

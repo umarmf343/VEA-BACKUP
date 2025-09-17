@@ -85,7 +85,6 @@ export function LibrarianDashboard({ librarian }: LibrarianDashboardProps) {
       await dbManager.updateBookRequest(requestId, {
         status: "approved",
         approvedBy: librarian.id,
-        approvedDate: new Date().toISOString(),
       })
     } catch (error) {
       console.error("Error approving request:", error)
@@ -97,7 +96,6 @@ export function LibrarianDashboard({ librarian }: LibrarianDashboardProps) {
       await dbManager.updateBookRequest(requestId, {
         status: "rejected",
         rejectedBy: librarian.id,
-        rejectedDate: new Date().toISOString(),
       })
     } catch (error) {
       console.error("Error rejecting request:", error)
@@ -107,8 +105,7 @@ export function LibrarianDashboard({ librarian }: LibrarianDashboardProps) {
   const handleReturnBook = async (borrowId: string) => {
     try {
       await dbManager.returnBook(borrowId, {
-        returnedDate: new Date().toISOString(),
-        returnedTo: librarian.id,
+        returnedAt: new Date().toISOString(),
       })
     } catch (error) {
       console.error("Error returning book:", error)

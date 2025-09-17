@@ -1,7 +1,7 @@
 export const runtime = "nodejs"
 
 import { type NextRequest, NextResponse } from "next/server"
-import { DatabaseManager } from "@/lib/database-manager"
+import { DatabaseManager, type GradeRecord } from "@/lib/database-manager"
 
 const dbManager = new DatabaseManager()
 
@@ -31,7 +31,18 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { studentId, subject, firstCA, secondCA, assignment, exam, remarks, teacherId } = body
+    const {
+      studentId,
+      subject,
+      classId,
+      term,
+      firstCA,
+      secondCA,
+      assignment,
+      exam,
+      remarks,
+      teacherId,
+    } = body
 
     // Calculate totals and grade
     const caTotal = (firstCA || 0) + (secondCA || 0) + (assignment || 0)
@@ -47,16 +58,15 @@ export async function POST(request: NextRequest) {
     const gradeData = {
       studentId,
       subject,
-      firstCA,
-      secondCA,
-      assignment,
-      caTotal,
+      classId,
+      term,
+      ca1: firstCA,
+      ca2: secondCA,
       exam,
       total,
       grade,
       remarks,
       teacherId,
-      updatedAt: new Date().toISOString(),
     }
 
     const savedGrade = await dbManager.saveGrade(gradeData)
@@ -71,30 +81,25 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json()
-    const { id, ...updateData } = body
+    const { id, ...rawData } = body
 
-    // Recalculate totals if assessment scores are updated
-    if (updateData.firstCA !== undefined || updateData.secondCA !== undefined || updateData.assignment !== undefined) {
-      const caTotal = (updateData.firstCA || 0) + (updateData.secondCA || 0) + (updateData.assignment || 0)
-      updateData.caTotal = caTotal
+    const gradeUpdates: Partial<GradeRecord> & {
+      ca1?: number
+      ca2?: number
+      exam?: number
+    } = {}
 
-      if (updateData.exam !== undefined) {
-        updateData.total = caTotal + updateData.exam
+    if (rawData.classId !== undefined) gradeUpdates.classId = rawData.classId
+    if (rawData.term !== undefined) gradeUpdates.term = rawData.term
+    if (rawData.firstCA !== undefined) gradeUpdates.ca1 = rawData.firstCA
+    if (rawData.secondCA !== undefined) gradeUpdates.ca2 = rawData.secondCA
+    if (rawData.exam !== undefined) gradeUpdates.exam = rawData.exam
+    if (rawData.total !== undefined) gradeUpdates.total = rawData.total
+    if (rawData.grade !== undefined) gradeUpdates.grade = rawData.grade
+    if (rawData.remarks !== undefined) gradeUpdates.remarks = rawData.remarks
+    if (rawData.teacherId !== undefined) gradeUpdates.teacherId = rawData.teacherId
 
-        let grade = "F"
-        if (updateData.total >= 75) grade = "A"
-        else if (updateData.total >= 60) grade = "B"
-        else if (updateData.total >= 50) grade = "C"
-        else if (updateData.total >= 40) grade = "D"
-        else if (updateData.total >= 30) grade = "E"
-
-        updateData.grade = grade
-      }
-    }
-
-    updateData.updatedAt = new Date().toISOString()
-
-    const updatedGrade = await dbManager.updateGrade(id, updateData)
+    const updatedGrade = await dbManager.updateGrade(id, gradeUpdates)
 
     return NextResponse.json({ message: "Grade updated successfully", data: updatedGrade })
   } catch (error) {

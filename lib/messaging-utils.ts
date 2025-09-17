@@ -131,7 +131,7 @@ export class MessagingService {
         body: notification.body,
         icon: "/favicon.ico",
         badge: "/favicon.ico",
-        timestamp: notification.timestamp.getTime(),
+        tag: notification.id,
       })
     }
 
