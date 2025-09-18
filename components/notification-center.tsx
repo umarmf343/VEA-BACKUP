@@ -23,6 +23,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 const ENDPOINTS: Record<string, string> = {
   "super-admin": "/api/super-admin/notifications",
   admin: "/api/admin/notifications",
+  librarian: "/api/admin/notifications",
 };
 const POLL_INTERVAL = 90_000;
 

@@ -11,6 +11,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 const ENDPOINTS: Record<string, string> = {
   "super-admin": "/api/super-admin/activity",
   admin: "/api/admin/activity",
+  librarian: "/api/super-admin/activity",
 };
 
 function resolveEndpoint(role: string | undefined) {
