@@ -113,6 +113,10 @@ export interface Book {
   copies: number
   availableCopies: number
   status: "available" | "unavailable"
+  isbn?: string
+  addedBy?: string
+  addedDate?: string
+  tags?: string[]
 }
 
 export interface BorrowedBook {
@@ -121,8 +125,9 @@ export interface BorrowedBook {
   studentId: string
   borrowedAt: string
   dueDate: string
-  status: "borrowed" | "returned"
+  status: "active" | "returned"
   returnedAt?: string
+  notes?: string
 }
 
 export interface BookRequest {
@@ -134,6 +139,7 @@ export interface BookRequest {
   updatedAt?: string
   approvedBy?: string
   rejectedBy?: string
+  notes?: string
 }
 
 export interface GradeRecord {
@@ -579,6 +585,10 @@ const DEFAULT_DATA: Collections = {
       copies: 12,
       availableCopies: 8,
       status: "available",
+      isbn: "978-9785021837",
+      addedBy: "usr-librarian-1",
+      addedDate: "2024-01-10T08:30:00.000Z",
+      tags: ["Core", "JSS"],
     },
     {
       id: "book-002",
@@ -588,6 +598,10 @@ const DEFAULT_DATA: Collections = {
       copies: 10,
       availableCopies: 4,
       status: "available",
+      isbn: "978-9785231045",
+      addedBy: "usr-librarian-1",
+      addedDate: "2024-01-12T11:15:00.000Z",
+      tags: ["STEM", "Senior"],
     },
     {
       id: "book-003",
@@ -597,6 +611,10 @@ const DEFAULT_DATA: Collections = {
       copies: 8,
       availableCopies: 8,
       status: "available",
+      isbn: "978-9785467207",
+      addedBy: "usr-librarian-1",
+      addedDate: "2024-01-15T09:45:00.000Z",
+      tags: ["Arts", "Senior"],
     },
   ],
   borrowedBooks: [
@@ -606,7 +624,7 @@ const DEFAULT_DATA: Collections = {
       studentId: "std-001",
       borrowedAt: "2024-02-01",
       dueDate: "2024-02-21",
-      status: "borrowed",
+      status: "active",
     },
     {
       id: "borrow-002",
@@ -614,7 +632,7 @@ const DEFAULT_DATA: Collections = {
       studentId: "std-002",
       borrowedAt: "2024-02-10",
       dueDate: "2024-03-01",
-      status: "borrowed",
+      status: "active",
     },
   ],
   bookRequests: [
@@ -1088,15 +1106,31 @@ export class DatabaseManager {
     return clone(this.getCollection("books"))
   }
 
-  async addBook(data: Omit<Book, "id"> & { id?: string }) {
+  async addBook(
+    data: Omit<Book, "id" | "availableCopies" | "status"> & {
+      id?: string
+      availableCopies?: number
+      status?: Book["status"]
+    },
+  ) {
+    const totalCopies = Number.isFinite(data.copies) ? Number(data.copies) : 0
+    const availableCopies = Math.max(
+      0,
+      Math.min(totalCopies, Number.isFinite(data.availableCopies) ? Number(data.availableCopies) : totalCopies),
+    )
+
     const book: Book = {
       id: data.id ?? randomUUID(),
       title: data.title,
       author: data.author,
       category: data.category,
-      copies: data.copies,
-      availableCopies: data.availableCopies ?? data.copies,
-      status: data.status,
+      copies: totalCopies,
+      availableCopies,
+      status: data.status ?? (availableCopies > 0 ? "available" : "unavailable"),
+      isbn: data.isbn,
+      addedBy: data.addedBy,
+      addedDate: data.addedDate ?? new Date().toISOString(),
+      tags: data.tags ? [...data.tags] : undefined,
     }
 
     this.updateCollection("books", (current) => [...current, book])
