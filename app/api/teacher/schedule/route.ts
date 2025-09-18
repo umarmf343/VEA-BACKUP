@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const schedule = listTeacherSchedule();
+    const schedule = await listTeacherSchedule();
     return NextResponse.json({ schedule });
   } catch (error) {
     console.error("Failed to load teacher schedule", error);
@@ -45,7 +45,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "type is invalid." }, { status: 400 });
     }
 
-    const item = addTeacherScheduleItem({
+    const item = await addTeacherScheduleItem({
       title: title.trim(),
       type: normalizedType,
       startTime,

@@ -11,8 +11,8 @@ export const metadata = {
   title: "Teacher Control Centre",
 };
 
-export default function TeacherPage() {
-  const profile = getTeacherProfile();
+export default async function TeacherPage() {
+  const profile = await getTeacherProfile();
 
   return (
     <main className="space-y-10">

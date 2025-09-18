@@ -1003,6 +1003,23 @@ export class DatabaseManager {
     })
   }
 
+  async getAssignmentSubmissions(filters: { assignmentId?: string; assignmentIds?: string[]; studentId?: string } = {}) {
+    const submissions = clone(this.getCollection("assignmentSubmissions"))
+
+    if (!filters.assignmentId && !filters.assignmentIds && !filters.studentId) {
+      return submissions
+    }
+
+    const idSet = filters.assignmentIds ? new Set(filters.assignmentIds) : undefined
+
+    return submissions.filter((submission) => {
+      if (filters.assignmentId && submission.assignmentId !== filters.assignmentId) return false
+      if (idSet && !idSet.has(submission.assignmentId)) return false
+      if (filters.studentId && submission.studentId !== filters.studentId) return false
+      return true
+    })
+  }
+
   async createAssignment(data: Omit<Assignment, "id" | "createdAt"> & { id?: string }) {
     const assignment: Assignment = {
       id: data.id ?? randomUUID(),
@@ -1020,6 +1037,24 @@ export class DatabaseManager {
     return assignment
   }
 
+  async updateAssignment(assignmentId: string, updates: Partial<Assignment>) {
+    let updated: Assignment | null = null
+
+    this.updateCollection("assignments", (current) =>
+      current.map((assignment) => {
+        if (assignment.id !== assignmentId) return assignment
+        updated = { ...assignment, ...updates }
+        return updated
+      }),
+    )
+
+    if (!updated) {
+      throw new Error(`Assignment with id ${assignmentId} not found`)
+    }
+
+    return updated
+  }
+
   async createAssignmentSubmission(data: Omit<AssignmentSubmission, "id" | "submittedAt"> & { id?: string }) {
     const submission: AssignmentSubmission = {
       id: data.id ?? randomUUID(),
@@ -1034,6 +1069,18 @@ export class DatabaseManager {
 
     this.updateCollection("assignmentSubmissions", (current) => [...current, submission])
     return submission
+  }
+
+  async updateAssignmentSubmissions(
+    assignmentId: string,
+    updates: Partial<Omit<AssignmentSubmission, "id" | "assignmentId">>,
+  ) {
+    this.updateCollection("assignmentSubmissions", (current) =>
+      current.map((submission) => {
+        if (submission.assignmentId !== assignmentId) return submission
+        return { ...submission, ...updates }
+      }),
+    )
   }
 
   async getBooks() {

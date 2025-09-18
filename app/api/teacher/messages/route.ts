@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const messages = listTeacherMessages();
+    const messages = await listTeacherMessages();
     return NextResponse.json({ messages });
   } catch (error) {
     console.error("Failed to load teacher messages", error);
@@ -29,7 +29,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "recipients is required." }, { status: 400 });
     }
 
-    const message = sendTeacherMessage({
+    const message = await sendTeacherMessage({
       subject: subject.trim(),
       body: body.trim(),
       recipients: recipients.map((recipient: string) => String(recipient).trim()).filter(Boolean),

@@ -1,5 +1,14 @@
 import { randomUUID } from "crypto";
 
+import {
+  dbManager,
+  type Assignment,
+  type AssignmentSubmission,
+  type ClassRecord,
+  type Student,
+  type UserRecord,
+} from "./database-manager";
+
 type DayOfWeek = "Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday";
 
 export type ScheduleType = "lesson" | "meeting" | "duty" | "event";
@@ -106,18 +115,57 @@ export interface TeacherDashboardMetrics {
   lastSync: string;
 }
 
+interface AssignmentExtras {
+  resources?: string[];
+  lastUpdated: string;
+}
+
 interface TeacherState {
-  profile: TeacherProfile;
-  classes: TeacherClass[];
-  assignments: TeacherAssignment[];
   assessments: TeacherAssessment[];
   messages: TeacherMessage[];
   notifications: TeacherNotification[];
   schedule: TeacherScheduleItem[];
   lastSync: string;
+  profileFallback: TeacherProfile;
+  assignmentExtras: Record<string, AssignmentExtras>;
 }
 
 const GLOBAL_KEY = "__veaTeacherState";
+const TEACHER_USER_ID = "usr-teacher-1";
+
+const CLASS_ENRICHMENT: Record<
+  string,
+  {
+    subject?: string;
+    nextLessonTopic: string;
+    schedule: TeacherClass["schedule"];
+  }
+> = {
+  "cls-jss1a": {
+    subject: "Mathematics",
+    nextLessonTopic: "Building algebraic fluency",
+    schedule: [
+      { day: "Monday", startTime: "08:00", endTime: "08:50", room: "Math Lab" },
+      { day: "Wednesday", startTime: "10:00", endTime: "10:50", room: "Room 204" },
+    ],
+  },
+  "cls-jss2a": {
+    subject: "Mathematics",
+    nextLessonTopic: "Probability fundamentals",
+    schedule: [
+      { day: "Tuesday", startTime: "09:00", endTime: "09:50", room: "Room 105" },
+      { day: "Thursday", startTime: "11:00", endTime: "11:50", room: "Room 105" },
+    ],
+  },
+  "cls-ss1a": {
+    subject: "Physics",
+    nextLessonTopic: "Newton's laws practical",
+    schedule: [
+      { day: "Monday", startTime: "12:00", endTime: "12:50", room: "Physics Lab" },
+      { day: "Thursday", startTime: "09:00", endTime: "09:50", room: "Physics Lab" },
+    ],
+  },
+};
 
 type WithTeacherState = typeof globalThis & { [GLOBAL_KEY]?: TeacherState };
 
@@ -127,6 +175,12 @@ function getGlobal(): WithTeacherState {
 
 function clone<T>(value: T): T {
   return typeof structuredClone === "function" ? structuredClone(value) : JSON.parse(JSON.stringify(value));
+}
+
+function toIsoString(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return new Date().toISOString();
+  return date.toISOString();
 }
 
 function seedState(): TeacherState {
@@ -139,149 +193,77 @@ function seedState(): TeacherState {
     return d.toISOString();
   };
 
-  const classes: TeacherClass[] = [
-    {
-      id: "cls-mth-jss2a",
-      name: "JSS 2 - A",
-      level: "Junior Secondary 2",
-      subject: "Mathematics",
-      studentCount: 32,
-      attendanceRate: 0.96,
-      lastUpdated: today,
-      nextLessonTopic: "Linear Equations and Graphs",
-      schedule: [
-        { day: "Monday", startTime: "08:00", endTime: "08:50", room: "Math Lab" },
-        { day: "Wednesday", startTime: "10:00", endTime: "10:50", room: "Room 204" },
-      ],
-    },
-    {
-      id: "cls-mth-jss3b",
-      name: "JSS 3 - B",
-      level: "Junior Secondary 3",
-      subject: "Mathematics",
-      studentCount: 28,
-      attendanceRate: 0.93,
-      lastUpdated: today,
-      nextLessonTopic: "Probability Fundamentals",
-      schedule: [
-        { day: "Tuesday", startTime: "09:00", endTime: "09:50", room: "Room 105" },
-        { day: "Thursday", startTime: "11:00", endTime: "11:50", room: "Room 105" },
-      ],
-    },
-    {
-      id: "cls-sci-sss1a",
-      name: "SSS 1 - A",
-      level: "Senior Secondary 1",
-      subject: "Physics",
-      studentCount: 30,
-      attendanceRate: 0.9,
-      lastUpdated: today,
-      nextLessonTopic: "Newton's Laws of Motion",
-      schedule: [
-        { day: "Monday", startTime: "12:00", endTime: "12:50", room: "Physics Lab" },
-        { day: "Thursday", startTime: "09:00", endTime: "09:50", room: "Physics Lab" },
-      ],
-    },
-  ];
-
-  const assignments: TeacherAssignment[] = [
-    {
-      id: "asg-linear-equations",
-      title: "Linear Equations Worksheet",
-      description: "Complete the attached worksheet on solving two-step linear equations.",
-      classId: "cls-mth-jss2a",
-      dueDate: startOfDay(2, 14),
-      status: "assigned",
-      submissionsPending: 12,
-      submissionsGraded: 20,
-      resources: ["worksheet-linear-equations.pdf"],
+  const assignmentExtras: Record<string, AssignmentExtras> = {
+    "assign-001": {
+      resources: ["algebra-revision-handout.pdf"],
       lastUpdated: today,
     },
-    {
-      id: "asg-probability-project",
-      title: "Probability Group Project",
-      description: "Group project exploring probability in real-world scenarios.",
-      classId: "cls-mth-jss3b",
-      dueDate: startOfDay(5, 16),
-      status: "draft",
-      submissionsPending: 0,
-      submissionsGraded: 0,
-      resources: ["probability-project-guide.docx"],
+    "assign-002": {
+      resources: ["agric-practices-brief.docx"],
       lastUpdated: today,
     },
-    {
-      id: "asg-kinematics-quiz",
-      title: "Kinematics Quiz",
-      description: "Short quiz covering speed, velocity, and acceleration.",
-      classId: "cls-sci-sss1a",
-      dueDate: startOfDay(-1, 10),
-      status: "submitted",
-      submissionsPending: 18,
-      submissionsGraded: 12,
-      lastUpdated: today,
-    },
-  ];
+  };
 
   const assessments: TeacherAssessment[] = [
     {
-      id: "asm-grace-quiz2",
-      classId: "cls-mth-jss2a",
-      title: "Quiz 2 - Linear Equations",
+      id: "asm-algebra-quiz",
+      classId: "cls-jss1a",
+      title: "Quiz 2 - Algebra basics",
       type: "quiz",
-      studentName: "Grace Okafor",
+      studentName: "Amaka Obi",
       submittedAt: startOfDay(0, 7, 45),
       dueDate: startOfDay(0, 8),
       status: "pending",
-      remarks: "Check workings for question 4",
+      remarks: "Review question 4 workings.",
     },
     {
-      id: "asm-king-project",
-      classId: "cls-mth-jss3b",
-      title: "Probability Project - Group 3",
+      id: "asm-agric-project",
+      classId: "cls-jss2a",
+      title: "Probability project - Group review",
       type: "project",
       studentName: "Group 3",
       submittedAt: startOfDay(-1, 15, 30),
       dueDate: startOfDay(-1, 16),
       status: "in-review",
-      remarks: "Verify experimental data.",
+      remarks: "Verify experimental data set.",
     },
     {
-      id: "asm-sss1a-midterm",
-      classId: "cls-sci-sss1a",
-      title: "Mid-term Test",
+      id: "asm-physics-midterm",
+      classId: "cls-ss1a",
+      title: "Physics mid-term test",
       type: "test",
-      studentName: "Class Submission",
+      studentName: "Class submission",
       submittedAt: startOfDay(-3, 11),
       dueDate: startOfDay(-3, 11),
       status: "pending",
-      remarks: "Moderate grades with rubric",
+      remarks: "Moderate grades with rubric.",
     },
   ];
 
   const messages: TeacherMessage[] = [
     {
-      id: "msg-parent-grace",
-      subject: "Grace - Homework follow up",
-      preview: "Could you please share how Grace is coping with the new maths topics?",
-      body: "Good day, please how is Grace adapting to the new mathematics topics? We would love to support her at home.",
+      id: "msg-parent-amaka",
+      subject: "Amaka - Homework follow up",
+      preview: "Could you share how Amaka is coping with algebra?",
+      body: "Good day, please how is Amaka adapting to the new mathematics topics? We would love to support her at home.",
       sentAt: startOfDay(-1, 18),
-      sender: "Mrs. Okafor (Parent)",
-      recipients: ["Mrs. Sarah Johnson"],
+      sender: "Mrs. Ngozi Obi (Parent)",
+      recipients: ["Mr. Samuel Eze"],
       read: false,
     },
     {
       id: "msg-hod-physics",
-      subject: "Physics Lab Maintenance",
+      subject: "Physics lab maintenance",
       preview: "Reminder: Update the lab checklist before Friday.",
       body: "Please ensure the physics lab equipment checklist is updated before the safety inspection on Friday.",
       sentAt: startOfDay(-2, 9, 30),
       sender: "Head of Science Department",
-      recipients: ["Mrs. Sarah Johnson"],
+      recipients: ["Mr. Samuel Eze"],
       read: true,
     },
     {
       id: "msg-admin-meeting",
-      subject: "Curriculum Review Meeting",
+      subject: "Curriculum review meeting",
       preview: "Agenda for next week's curriculum review meeting.",
       body: "Attached is the agenda for the upcoming curriculum review meeting. Kindly review and come prepared.",
       sentAt: startOfDay(-3, 13, 15),
@@ -294,24 +276,24 @@ function seedState(): TeacherState {
 
   const notifications: TeacherNotification[] = [
     {
-      id: "ntf-attendance",
+      id: "ntf-jss2-attendance",
       title: "Attendance alert",
-      message: "JSS 3B attendance dropped below 90% this week.",
+      message: "JSS 2A attendance dropped below 90% this week.",
       timestamp: startOfDay(-1, 14),
       level: "warning",
       read: false,
-      actionUrl: "/teacher/classes/cls-mth-jss3b",
+      actionUrl: "/teacher/classes/cls-jss2a",
     },
     {
-      id: "ntf-submission",
+      id: "ntf-new-submissions",
       title: "New assignment submission",
-      message: "4 new submissions received for Kinematics Quiz.",
+      message: "4 new submissions received for Algebra Revision.",
       timestamp: startOfDay(0, 6, 45),
       level: "info",
       read: false,
     },
     {
-      id: "ntf-meeting",
+      id: "ntf-dept-meeting",
       title: "Department meeting confirmed",
       message: "Science department strategy session confirmed for Thursday 3pm.",
       timestamp: startOfDay(-2, 8),
@@ -323,34 +305,34 @@ function seedState(): TeacherState {
 
   const schedule: TeacherScheduleItem[] = [
     {
-      id: "sch-jss2a-monday",
-      title: "Mathematics - JSS2A",
+      id: "sch-jss1a-monday",
+      title: "Mathematics - JSS 1A",
       type: "lesson",
       startTime: startOfDay(0, 8),
       endTime: startOfDay(0, 8, 50),
       location: "Math Lab",
-      classId: "cls-mth-jss2a",
-      notes: "Introduce graphing of linear equations.",
+      classId: "cls-jss1a",
+      notes: "Introduce algebraic expressions with manipulatives.",
     },
     {
-      id: "sch-jss3b-tuesday",
-      title: "Mathematics - JSS3B",
+      id: "sch-jss2a-tuesday",
+      title: "Mathematics - JSS 2A",
       type: "lesson",
       startTime: startOfDay(1, 9),
       endTime: startOfDay(1, 9, 50),
       location: "Room 105",
-      classId: "cls-mth-jss3b",
-      notes: "Probability tree diagrams.",
+      classId: "cls-jss2a",
+      notes: "Probability tree diagrams practical.",
     },
     {
-      id: "sch-sss1a-thursday",
-      title: "Physics - SSS1A",
+      id: "sch-ss1a-thursday",
+      title: "Physics - SS 1A",
       type: "lesson",
       startTime: startOfDay(3, 9),
       endTime: startOfDay(3, 9, 50),
       location: "Physics Lab",
-      classId: "cls-sci-sss1a",
-      notes: "Conduct practical on motion sensors.",
+      classId: "cls-ss1a",
+      notes: "Conduct motion sensor experiments.",
     },
     {
       id: "sch-dept-meeting",
@@ -359,27 +341,26 @@ function seedState(): TeacherState {
       startTime: startOfDay(2, 15),
       endTime: startOfDay(2, 16, 30),
       location: "Conference Room B",
-      notes: "Align on lab improvements.",
+      notes: "Align lab improvement milestones.",
     },
   ];
 
   return {
-    profile: {
-      id: "teacher-sarah-johnson",
-      name: "Mrs. Sarah Johnson",
-      email: "sarah.johnson@vea.edu.ng",
-      avatar: "/avatars/teacher-sarah.png",
-      subjects: ["Mathematics", "Physics"],
-      formTeacherOf: "JSS 2A",
-      yearsOfExperience: 9,
-    },
-    classes,
-    assignments,
     assessments,
     messages,
     notifications,
     schedule,
     lastSync: today,
+    profileFallback: {
+      id: TEACHER_USER_ID,
+      name: "Mr. Samuel Eze",
+      email: "samuel.eze@vea.edu.ng",
+      avatar: "/avatars/teacher-samuel.png",
+      subjects: ["Mathematics", "Further Mathematics"],
+      formTeacherOf: "JSS 1A",
+      yearsOfExperience: 9,
+    },
+    assignmentExtras,
   };
 }
 
@@ -391,113 +372,256 @@ function ensureState(): TeacherState {
   return g[GLOBAL_KEY]!;
 }
 
-export function getTeacherDashboardMetrics(): TeacherDashboardMetrics {
+function mapAssignmentStatus(assignment: Assignment, pending: number): AssignmentStatus {
+  if (assignment.status === "closed") {
+    return "graded";
+  }
+  if (pending > 0) {
+    return "submitted";
+  }
+  if (assignment.status === "active" && pending === 0) {
+    return "assigned";
+  }
+  return "assigned";
+}
+
+async function enrichClasses(classes: ClassRecord[]): Promise<TeacherClass[]> {
   const state = ensureState();
-  const pendingMarks = state.assessments.filter((a) => a.status !== "completed").length;
-  const assignments = state.assignments.filter((a) => a.status === "assigned" || a.status === "submitted").length;
-  const messages = state.messages.filter((m) => !m.read && !m.archived).length;
+  const classPromises = classes.map(async (klass) => {
+    const students = await dbManager.getStudentsByClass(klass.id);
+    const studentCount = students.length;
+    const attendanceRate = computeAttendanceRate(students);
+    const enrichment = CLASS_ENRICHMENT[klass.id];
+
+    return {
+      id: klass.id,
+      name: klass.name,
+      level: klass.level,
+      subject: enrichment?.subject ?? klass.subjects[0] ?? state.profileFallback.subjects[0] ?? "General Studies",
+      studentCount,
+      attendanceRate: Number(attendanceRate.toFixed(2)),
+      lastUpdated: state.lastSync,
+      nextLessonTopic: enrichment?.nextLessonTopic ?? "Lesson planning in progress",
+      schedule: enrichment?.schedule ?? [],
+    } satisfies TeacherClass;
+  });
+
+  const resolved = await Promise.all(classPromises);
+  return resolved.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function computeAttendanceRate(students: Student[]): number {
+  if (students.length === 0) return 0;
+  const total = students.reduce((sum, student) => {
+    const present = student.attendance?.present ?? 0;
+    const totalDays = student.attendance?.total ?? 0;
+    if (!totalDays) return sum;
+    return sum + present / totalDays;
+  }, 0);
+  return total / students.length;
+}
+
+function collectSubmissionStats(
+  submissions: AssignmentSubmission[],
+): { graded: number; pending: number } {
+  let graded = 0;
+  let pending = 0;
+  submissions.forEach((submission) => {
+    if (submission.status === "graded") {
+      graded += 1;
+    } else {
+      pending += 1;
+    }
+  });
+  return { graded, pending };
+}
+
+export async function getTeacherDashboardMetrics(): Promise<TeacherDashboardMetrics> {
+  const state = ensureState();
+  const [assignments, classes] = await Promise.all([listTeacherAssignments(), listTeacherClasses()]);
+
+  const pendingMarks = state.assessments.filter((assessment) => assessment.status !== "completed").length;
+  const assignmentsNeedingAttention = assignments.filter((assignment) => assignment.status !== "graded").length;
+  const unreadMessages = state.messages.filter((message) => !message.read && !message.archived).length;
 
   const now = Date.now();
   const sevenDays = 7 * 24 * 60 * 60 * 1000;
   const upcomingLessons = state.schedule.filter((item) => {
     const start = Date.parse(item.startTime);
-    return start >= now && start <= now + sevenDays && item.type === "lesson";
+    return item.type === "lesson" && start >= now && start <= now + sevenDays;
   }).length;
 
-  const attendanceRates = state.classes.map((c) => c.attendanceRate);
-  const averageAttendance = attendanceRates.length
-    ? attendanceRates.reduce((sum, rate) => sum + rate, 0) / attendanceRates.length
+  const averageAttendance = classes.length
+    ? classes.reduce((sum, klass) => sum + klass.attendanceRate, 0) / classes.length
     : 0;
 
-  const totalSubmissions = state.assignments.reduce(
-    (acc, assignment) => acc + assignment.submissionsGraded + assignment.submissionsPending,
-    0
+  const totals = assignments.reduce(
+    (acc, assignment) => {
+      const totalSubmissions = assignment.submissionsGraded + assignment.submissionsPending;
+      return {
+        graded: acc.graded + assignment.submissionsGraded,
+        total: acc.total + totalSubmissions,
+      };
+    },
+    { graded: 0, total: 0 },
   );
-  const totalGraded = state.assignments.reduce((acc, assignment) => acc + assignment.submissionsGraded, 0);
-  const gradeCompletion = totalSubmissions > 0 ? totalGraded / totalSubmissions : 0;
+
+  const gradeCompletion = totals.total > 0 ? Number((totals.graded / totals.total).toFixed(2)) : 0;
 
   return {
     pendingMarks,
-    assignments,
-    messages,
+    assignments: assignmentsNeedingAttention,
+    messages: unreadMessages,
     upcomingLessons,
     averageAttendance: Number(averageAttendance.toFixed(2)),
-    gradeCompletion: Number(gradeCompletion.toFixed(2)),
+    gradeCompletion,
     lastSync: state.lastSync,
   };
 }
 
-export function listTeacherClasses(): TeacherClass[] {
-  return clone(ensureState().classes);
+export async function listTeacherClasses(): Promise<TeacherClass[]> {
+  const classes = await dbManager.getClasses();
+  const teacherClasses = classes.filter((klass) => klass.classTeacherId === TEACHER_USER_ID);
+  return enrichClasses(teacherClasses);
 }
 
-export function listTeacherAssignments(): TeacherAssignment[] {
+export async function listTeacherAssignments(): Promise<TeacherAssignment[]> {
   const state = ensureState();
-  return clone(state.assignments.sort((a, b) => Date.parse(a.dueDate) - Date.parse(b.dueDate)));
+  const assignments = await dbManager.getAssignments({ teacherId: TEACHER_USER_ID });
+  const submissions = await dbManager.getAssignmentSubmissions({ assignmentIds: assignments.map((item) => item.id) });
+  const submissionMap = new Map<string, AssignmentSubmission[]>();
+  submissions.forEach((submission) => {
+    const list = submissionMap.get(submission.assignmentId) ?? [];
+    list.push(submission);
+    submissionMap.set(submission.assignmentId, list);
+  });
+
+  return assignments
+    .map((assignment) => {
+      const stats = collectSubmissionStats(submissionMap.get(assignment.id) ?? []);
+      const extras = state.assignmentExtras[assignment.id];
+      const lastUpdated = extras?.lastUpdated ?? assignment.createdAt ?? new Date().toISOString();
+
+      if (!extras) {
+        state.assignmentExtras[assignment.id] = { lastUpdated };
+      }
+
+      return {
+        id: assignment.id,
+        title: assignment.title,
+        description: assignment.description ?? "",
+        classId: assignment.classId,
+        dueDate: toIsoString(assignment.dueDate),
+        status: mapAssignmentStatus(assignment, stats.pending),
+        submissionsPending: stats.pending,
+        submissionsGraded: stats.graded,
+        resources: state.assignmentExtras[assignment.id]?.resources,
+        lastUpdated,
+      } satisfies TeacherAssignment;
+    })
+    .sort((a, b) => Date.parse(a.dueDate) - Date.parse(b.dueDate));
 }
 
-export function createTeacherAssignment(payload: {
+export async function createTeacherAssignment(payload: {
   title: string;
   description?: string;
   classId: string;
   dueDate: string;
   resources?: string[];
-}): TeacherAssignment {
+}): Promise<TeacherAssignment> {
   const state = ensureState();
-  const assignment: TeacherAssignment = {
-    id: `asg-${randomUUID()}`,
+  const classes = await dbManager.getClasses();
+  const targetClass = classes.find((klass) => klass.id === payload.classId);
+  const subject = targetClass?.subjects?.[0] ?? state.profileFallback.subjects[0] ?? "General Studies";
+  const dueDateIso = toIsoString(payload.dueDate);
+
+  const created = await dbManager.createAssignment({
     title: payload.title,
     description: payload.description ?? "",
     classId: payload.classId,
-    dueDate: payload.dueDate,
+    teacherId: TEACHER_USER_ID,
+    dueDate: dueDateIso,
+    subject,
+    status: "active",
+  });
+
+  const normalizedResources = payload.resources?.map((item) => String(item)).filter(Boolean) ?? undefined;
+  const timestamp = new Date().toISOString();
+  state.assignmentExtras[created.id] = {
+    resources: normalizedResources,
+    lastUpdated: timestamp,
+  };
+  state.lastSync = timestamp;
+
+  return {
+    id: created.id,
+    title: created.title,
+    description: created.description ?? "",
+    classId: created.classId,
+    dueDate: toIsoString(created.dueDate),
     status: "assigned",
     submissionsPending: 0,
     submissionsGraded: 0,
-    resources: payload.resources,
-    lastUpdated: new Date().toISOString(),
+    resources: normalizedResources,
+    lastUpdated: timestamp,
   };
-  state.assignments.push(assignment);
-  state.lastSync = new Date().toISOString();
-  return clone(assignment);
 }
 
-export function updateTeacherAssignment(
+export async function updateTeacherAssignment(
   assignmentId: string,
-  updates: Partial<Pick<TeacherAssignment, "status" | "submissionsPending" | "submissionsGraded" | "description" | "dueDate">>
-): TeacherAssignment | null {
+  updates: Partial<Pick<TeacherAssignment, "status" | "submissionsPending" | "submissionsGraded" | "description" | "dueDate">>,
+): Promise<TeacherAssignment | null> {
   const state = ensureState();
-  const target = state.assignments.find((assignment) => assignment.id === assignmentId);
-  if (!target) return null;
+  const assignmentUpdates: Partial<Assignment> = {};
 
-  if (typeof updates.status === "string") {
-    target.status = updates.status;
-  }
-  if (typeof updates.submissionsPending === "number") {
-    target.submissionsPending = Math.max(0, updates.submissionsPending);
-  }
-  if (typeof updates.submissionsGraded === "number") {
-    target.submissionsGraded = Math.max(0, updates.submissionsGraded);
-  }
   if (typeof updates.description === "string") {
-    target.description = updates.description;
+    assignmentUpdates.description = updates.description;
   }
   if (typeof updates.dueDate === "string") {
-    target.dueDate = updates.dueDate;
+    assignmentUpdates.dueDate = toIsoString(updates.dueDate);
   }
-  target.lastUpdated = new Date().toISOString();
-  state.lastSync = target.lastUpdated;
-  return clone(target);
+
+  const shouldClose =
+    updates.status === "graded" ||
+    (typeof updates.submissionsPending === "number" && updates.submissionsPending <= 0 && updates.submissionsGraded !== undefined);
+
+  if (typeof updates.status === "string") {
+    assignmentUpdates.status = updates.status === "graded" ? "closed" : "active";
+  } else if (shouldClose) {
+    assignmentUpdates.status = "closed";
+  }
+
+  if (Object.keys(assignmentUpdates).length > 0) {
+    await dbManager.updateAssignment(assignmentId, assignmentUpdates);
+  }
+
+  if (assignmentUpdates.status === "closed" || shouldClose) {
+    await dbManager.updateAssignmentSubmissions(assignmentId, { status: "graded" });
+  }
+
+  const timestamp = new Date().toISOString();
+  const extras = state.assignmentExtras[assignmentId] ?? { lastUpdated: timestamp };
+  extras.lastUpdated = timestamp;
+  state.assignmentExtras[assignmentId] = extras;
+  state.lastSync = timestamp;
+
+  const assignments = await listTeacherAssignments();
+  return assignments.find((assignment) => assignment.id === assignmentId) ?? null;
 }
 
-export function listTeacherAssessments(): TeacherAssessment[] {
+export async function listTeacherAssessments(): Promise<TeacherAssessment[]> {
   const state = ensureState();
-  return clone(state.assessments.sort((a, b) => Date.parse(a.submittedAt) - Date.parse(b.submittedAt)));
+  return clone(
+    state.assessments
+      .slice()
+      .sort((a, b) => Date.parse(a.submittedAt) - Date.parse(b.submittedAt)),
+  );
 }
 
-export function updateTeacherAssessment(
+export async function updateTeacherAssessment(
   assessmentId: string,
-  updates: Partial<Pick<TeacherAssessment, "status" | "remarks">>
-): TeacherAssessment | null {
+  updates: Partial<Pick<TeacherAssessment, "status" | "remarks">>,
+): Promise<TeacherAssessment | null> {
   const state = ensureState();
   const target = state.assessments.find((assessment) => assessment.id === assessmentId);
   if (!target) return null;
@@ -508,23 +632,25 @@ export function updateTeacherAssessment(
   if (typeof updates.remarks === "string") {
     target.remarks = updates.remarks;
   }
+
   state.lastSync = new Date().toISOString();
   return clone(target);
 }
 
-export function listTeacherMessages(): TeacherMessage[] {
+export async function listTeacherMessages(): Promise<TeacherMessage[]> {
+  const state = ensureState();
   return clone(
-    ensureState()
-      .messages.slice()
-      .sort((a, b) => Date.parse(b.sentAt) - Date.parse(a.sentAt))
+    state.messages
+      .slice()
+      .sort((a, b) => Date.parse(b.sentAt) - Date.parse(a.sentAt)),
   );
 }
 
-export function sendTeacherMessage(payload: {
+export async function sendTeacherMessage(payload: {
   subject: string;
   body: string;
   recipients: string[];
-}): TeacherMessage {
+}): Promise<TeacherMessage> {
   const state = ensureState();
   const now = new Date().toISOString();
   const message: TeacherMessage = {
@@ -533,7 +659,7 @@ export function sendTeacherMessage(payload: {
     preview: payload.body.slice(0, 120),
     body: payload.body,
     sentAt: now,
-    sender: state.profile.name,
+    sender: state.profileFallback.name,
     recipients: payload.recipients,
     read: true,
   };
@@ -542,10 +668,10 @@ export function sendTeacherMessage(payload: {
   return clone(message);
 }
 
-export function updateTeacherMessage(
+export async function updateTeacherMessage(
   messageId: string,
-  updates: Partial<Pick<TeacherMessage, "read" | "archived">>
-): TeacherMessage | null {
+  updates: Partial<Pick<TeacherMessage, "read" | "archived">>,
+): Promise<TeacherMessage | null> {
   const state = ensureState();
   const target = state.messages.find((message) => message.id === messageId);
   if (!target) return null;
@@ -556,21 +682,24 @@ export function updateTeacherMessage(
   if (typeof updates.archived === "boolean") {
     target.archived = updates.archived;
   }
+
   state.lastSync = new Date().toISOString();
   return clone(target);
 }
 
-export function listTeacherNotifications(): TeacherNotification[] {
+export async function listTeacherNotifications(): Promise<TeacherNotification[]> {
   const state = ensureState();
   return clone(
-    state.notifications.slice().sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp))
+    state.notifications
+      .slice()
+      .sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp)),
   );
 }
 
-export function updateTeacherNotification(
+export async function updateTeacherNotification(
   notificationId: string,
-  updates: Partial<Pick<TeacherNotification, "read" | "acknowledgedAt">>
-): TeacherNotification | null {
+  updates: Partial<Pick<TeacherNotification, "read" | "acknowledgedAt">>,
+): Promise<TeacherNotification | null> {
   const state = ensureState();
   const target = state.notifications.find((notification) => notification.id === notificationId);
   if (!target) return null;
@@ -584,18 +713,21 @@ export function updateTeacherNotification(
   if (typeof updates.acknowledgedAt === "string") {
     target.acknowledgedAt = updates.acknowledgedAt;
   }
+
   state.lastSync = new Date().toISOString();
   return clone(target);
 }
 
-export function listTeacherSchedule(): TeacherScheduleItem[] {
+export async function listTeacherSchedule(): Promise<TeacherScheduleItem[]> {
   const state = ensureState();
   return clone(
-    state.schedule.slice().sort((a, b) => Date.parse(a.startTime) - Date.parse(b.startTime))
+    state.schedule
+      .slice()
+      .sort((a, b) => Date.parse(a.startTime) - Date.parse(b.startTime)),
   );
 }
 
-export function addTeacherScheduleItem(payload: {
+export async function addTeacherScheduleItem(payload: {
   title: string;
   type: ScheduleType;
   startTime: string;
@@ -603,7 +735,7 @@ export function addTeacherScheduleItem(payload: {
   location: string;
   classId?: string;
   notes?: string;
-}): TeacherScheduleItem {
+}): Promise<TeacherScheduleItem> {
   const state = ensureState();
   const item: TeacherScheduleItem = {
     id: `sch-${randomUUID()}`,
@@ -620,6 +752,31 @@ export function addTeacherScheduleItem(payload: {
   return clone(item);
 }
 
-export function getTeacherProfile(): TeacherProfile {
-  return clone(ensureState().profile);
+async function resolveTeacherProfile(): Promise<UserRecord | null> {
+  try {
+    return await dbManager.getUser(TEACHER_USER_ID);
+  } catch {
+    return null;
+  }
+}
+
+export async function getTeacherProfile(): Promise<TeacherProfile> {
+  const state = ensureState();
+  const [user, classes] = await Promise.all([resolveTeacherProfile(), dbManager.getClasses()]);
+  const teacherClasses = classes.filter((klass) => klass.classTeacherId === TEACHER_USER_ID);
+  const firstClass = teacherClasses[0]?.name ?? state.profileFallback.formTeacherOf;
+
+  const subjects = Array.isArray(user?.subjects) && user?.subjects.length
+    ? [...(user?.subjects ?? [])]
+    : state.profileFallback.subjects;
+
+  return {
+    id: user?.id ?? state.profileFallback.id,
+    name: user?.name ?? state.profileFallback.name,
+    email: user?.email ?? state.profileFallback.email,
+    avatar: state.profileFallback.avatar,
+    subjects,
+    formTeacherOf: firstClass ?? undefined,
+    yearsOfExperience: state.profileFallback.yearsOfExperience,
+  };
 }

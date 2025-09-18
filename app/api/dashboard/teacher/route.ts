@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const metrics = getTeacherDashboardMetrics();
+    const metrics = await getTeacherDashboardMetrics();
     return NextResponse.json(metrics);
   } catch (error) {
     console.error("Failed to load teacher dashboard metrics", error);
