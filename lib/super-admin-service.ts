@@ -1,5 +1,7 @@
 import { randomUUID } from "crypto";
 
+import { collectRealSystemMetrics } from "./system-metrics";
+
 export type TenantStatus = "active" | "trial" | "suspended";
 export type TenantPlan = "starter" | "growth" | "enterprise";
 export type StatusLevel = "healthy" | "warning" | "critical";
@@ -122,21 +124,6 @@ function clone<T>(value: T): T {
   }
 
   return JSON.parse(JSON.stringify(value));
-}
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value));
-}
-
-function adjustMetric(value: number, delta: number, min: number, max: number, precision = 0) {
-  const offset = Math.random() * delta * 2 - delta;
-  const next = clamp(value + offset, min, max);
-  if (precision > 0) {
-    const factor = 10 ** precision;
-    return Math.round(next * factor) / factor;
-  }
-
-  return Math.round(next);
 }
 
 function formatDowntimeMinutes(uptime: number) {
@@ -511,29 +498,30 @@ export function getOverviewMetrics(): SuperAdminSnapshot {
   };
 }
 
-export function getSystemMetrics(options: { refresh?: boolean } = {}) {
+export async function getSystemMetrics(options: { refresh?: boolean } = {}) {
   const state = getState();
-  const { systemMetrics } = state;
   const now = Date.now();
-  const shouldRefresh = options.refresh || now - new Date(systemMetrics.updatedAt).getTime() > 30_000;
+  const lastUpdated = new Date(state.systemMetrics.updatedAt).getTime();
+  const shouldRefresh = options.refresh || now - lastUpdated > 30_000;
 
   if (shouldRefresh) {
-    const next: SystemMetricsSnapshot = {
-      ...systemMetrics,
-      activeUsers: adjustMetric(systemMetrics.activeUsers, 38, 220, 1500),
-      databaseConnections: adjustMetric(systemMetrics.databaseConnections, 4, 10, 28),
-      serverLoad: adjustMetric(systemMetrics.serverLoad, 9, 20, 94),
-      memoryUsage: adjustMetric(systemMetrics.memoryUsage, 7, 35, 93),
-      diskUsage: adjustMetric(systemMetrics.diskUsage, 4, 50, 90),
-      networkLatency: adjustMetric(systemMetrics.networkLatency, 6, 12, 95),
-      apiResponseTime: adjustMetric(systemMetrics.apiResponseTime, 26, 140, 460),
-      uptime: adjustMetric(systemMetrics.uptime, 0.04, 99.4, 99.99, 2),
-      updatedAt: new Date().toISOString(),
-    };
+    const realMetrics = await collectRealSystemMetrics();
 
-    if (Math.random() > 0.78) {
-      next.lastBackupAt = new Date(now - Math.floor(Math.random() * 120 + 30) * 60 * 1000).toISOString();
-    }
+    const next: SystemMetricsSnapshot = {
+      uptime: realMetrics.uptime,
+      activeUsers: realMetrics.activeUsers,
+      databaseConnections: realMetrics.databaseConnections,
+      serverLoad: realMetrics.serverLoad,
+      memoryUsage: realMetrics.memoryUsage,
+      diskUsage: realMetrics.diskUsage,
+      networkLatency: realMetrics.networkLatency,
+      apiResponseTime: realMetrics.apiResponseTime,
+      lastBackupAt: realMetrics.lastBackupAt,
+      serverStatus: "healthy",
+      databaseStatus: "healthy",
+      overallStatus: "healthy",
+      updatedAt: realMetrics.updatedAt,
+    };
 
     next.serverStatus = computeServerStatus(next.serverLoad, next.memoryUsage, next.apiResponseTime);
     next.databaseStatus = computeDatabaseStatus(next.databaseConnections);
@@ -546,6 +534,12 @@ export function getSystemMetrics(options: { refresh?: boolean } = {}) {
       lastEntry.uptime = Number(next.uptime.toFixed(2));
       lastEntry.downtimeMinutes = formatDowntimeMinutes(lastEntry.uptime);
       lastEntry.timestamp = next.updatedAt;
+    } else {
+      state.uptimeLog.push({
+        timestamp: next.updatedAt,
+        uptime: Number(next.uptime.toFixed(2)),
+        downtimeMinutes: formatDowntimeMinutes(next.uptime),
+      });
     }
   }
 

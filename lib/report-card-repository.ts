@@ -15,6 +15,11 @@ async function ensureStorage() {
 }
 
 let writeQueue: Promise<void> = Promise.resolve()
+let writeQueueDepth = 0
+
+export function getReportCardWriteQueueDepth() {
+  return writeQueueDepth
+}
 
 export async function readReportCards(): Promise<ReportCardRecord[]> {
   await ensureStorage()
@@ -36,6 +41,7 @@ export async function writeReportCards(records: ReportCardRecord[]): Promise<voi
   const payload = JSON.stringify(records, null, 2)
   const tempFile = `${DATA_FILE}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`
 
+  writeQueueDepth += 1
   writeQueue = writeQueue
     .catch(() => undefined)
     .then(async () => {
@@ -45,6 +51,9 @@ export async function writeReportCards(records: ReportCardRecord[]): Promise<voi
       } finally {
         await fs.rm(tempFile, { force: true }).catch(() => undefined)
       }
+    })
+    .finally(() => {
+      writeQueueDepth = Math.max(0, writeQueueDepth - 1)
     })
 
   return writeQueue

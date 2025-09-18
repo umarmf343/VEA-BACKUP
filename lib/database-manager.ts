@@ -880,6 +880,24 @@ export class DatabaseManager {
     }
   }
 
+  getOperationalMetrics() {
+    let subscriptionCount = 0
+    this.collectionListeners.forEach((listeners) => {
+      subscriptionCount += listeners.size
+    })
+
+    let eventListenerCount = 0
+    this.eventListeners.forEach((listeners) => {
+      eventListenerCount += listeners.size
+    })
+
+    return {
+      collections: this.memoryStore.size,
+      subscriptions: subscriptionCount,
+      eventListeners: eventListenerCount,
+    }
+  }
+
   async getStudents() {
     return clone(this.getCollection("students"))
   }
