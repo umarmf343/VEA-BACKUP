@@ -35,7 +35,7 @@ describe("Users API", () => {
       id: "usr_1",
       name: "Ada Lovelace",
       email: "ada@example.com",
-      role: "Teacher",
+      role: "teacher",
       status: "active",
       createdAt: new Date().toISOString(),
     })
@@ -45,7 +45,9 @@ describe("Users API", () => {
     )
 
     expect(response.status).toBe(200)
-    expect(createUserSpy).toHaveBeenCalledWith(expect.objectContaining({ name: "Ada Lovelace" }))
+    expect(createUserSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "Ada Lovelace", role: "teacher", status: "active" }),
+    )
   })
 
   it("returns a validation error when the payload is invalid", async () => {
@@ -64,20 +66,25 @@ describe("Users API", () => {
       id: "usr_1",
       name: "Updated Name",
       email: "updated@example.com",
-      role: "Teacher",
-      status: "active",
+      role: "teacher",
+      status: "suspended" as const,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     })
 
     const response = await usersPut(
-      createRequest({ id: "usr_1", name: "Updated Name", email: "updated@example.com" }) as any,
+      createRequest({
+        id: "usr_1",
+        name: "Updated Name",
+        email: "updated@example.com",
+        status: "Suspended",
+      }) as any,
     )
 
     expect(response.status).toBe(200)
     expect(updateUserSpy).toHaveBeenCalledWith(
       "usr_1",
-      expect.objectContaining({ name: "Updated Name", updatedAt: expect.any(String) }),
+      expect.objectContaining({ name: "Updated Name", status: "suspended", updatedAt: expect.any(String) }),
     )
   })
 

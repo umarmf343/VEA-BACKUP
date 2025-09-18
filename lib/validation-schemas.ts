@@ -2,23 +2,43 @@ import { z, type ZodError } from "zod"
 
 const nonEmptyString = z.string().trim().min(1, "This field is required")
 
-const optionalString = z
-  .string()
-  .trim()
-  .min(1, "This field is required")
-  .optional()
+const optionalString = z.preprocess(
+  (value) => {
+    if (value === undefined || value === null) return undefined
+    if (typeof value === "string") {
+      const trimmed = value.trim()
+      return trimmed.length === 0 ? undefined : trimmed
+    }
+    return value
+  },
+  nonEmptyString.optional(),
+)
 
 const userRoleEnum = z.enum([
-  "Super Admin",
-  "Admin",
-  "Teacher",
-  "Student",
-  "Parent",
-  "Librarian",
-  "Accountant",
+  "super_admin",
+  "admin",
+  "teacher",
+  "student",
+  "parent",
+  "librarian",
+  "accountant",
 ])
 
-const userStatusEnum = z.enum(["active", "inactive"])
+const userRoleSchema = z.preprocess((value) => {
+  if (typeof value !== "string") return value
+  const normalized = value.trim().toLowerCase()
+  if (!normalized) return normalized
+  const canonical = normalized.replace(/\s+/g, "-").replace(/_/g, "-")
+  return canonical === "super-admin" ? "super_admin" : canonical
+}, userRoleEnum)
+
+const userStatusEnum = z.enum(["active", "inactive", "suspended"])
+
+const userStatusSchema = z.preprocess((value) => {
+  if (typeof value !== "string") return value
+  const normalized = value.trim().toLowerCase()
+  return normalized || value
+}, userStatusEnum)
 
 const dateString = z
   .string()
@@ -61,12 +81,12 @@ export const userCreateSchema = z.object({
   id: nonEmptyString.optional(),
   name: z.string().trim().min(2, "Name must be at least 2 characters"),
   email: z.string().trim().email("Invalid email address"),
-  role: userRoleEnum,
+  role: userRoleSchema,
   password: z
     .string()
     .min(8, "Password must be at least 8 characters")
     .optional(),
-  status: userStatusEnum.optional(),
+  status: userStatusSchema.optional(),
   studentIds: z.array(nonEmptyString).optional(),
   subjects: z.array(nonEmptyString).optional(),
 })
@@ -76,8 +96,8 @@ export const userUpdateSchema = z
     id: nonEmptyString,
     name: z.string().trim().min(2, "Name must be at least 2 characters").optional(),
     email: z.string().trim().email("Invalid email address").optional(),
-    role: userRoleEnum.optional(),
-    status: userStatusEnum.optional(),
+    role: userRoleSchema.optional(),
+    status: userStatusSchema.optional(),
     studentIds: z.array(nonEmptyString).optional(),
     subjects: z.array(nonEmptyString).optional(),
   })
