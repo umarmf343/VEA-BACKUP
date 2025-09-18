@@ -23,6 +23,37 @@
 // NOTE: Replace the in-memory DB with your real persistence layer in production.
 
 import { NextResponse } from "next/server";
+import { createRateLimit, getClientIp } from "@/lib/security";
+
+export const PAYMENT_INITIALIZE_RATE_LIMIT = { windowMs: 60 * 1000, max: 15 };
+
+const initializeRateLimiter = createRateLimit(
+  PAYMENT_INITIALIZE_RATE_LIMIT.windowMs,
+  PAYMENT_INITIALIZE_RATE_LIMIT.max
+);
+
+const formatRetrySeconds = (retryAfterMs?: number) => {
+  if (!retryAfterMs || retryAfterMs <= 0) {
+    return undefined;
+  }
+  return Math.max(1, Math.ceil(retryAfterMs / 1000)).toString();
+};
+
+const buildThrottleResponse = (retryAfterMs?: number) => {
+  const headers: Record<string, string> = {};
+  const retry = formatRetrySeconds(retryAfterMs);
+  if (retry) {
+    headers["Retry-After"] = retry;
+  }
+  return NextResponse.json(
+    { message: "Too many payment initializations. Please slow down." },
+    { status: 429, headers }
+  );
+};
+
+export const resetInitializeRateLimit = () => {
+  initializeRateLimiter.reset();
+};
 
 type Status = "pending" | "paid" | "failed";
 
@@ -51,6 +82,12 @@ function uid(prefix: string) {
 
 export async function POST(req: Request) {
   try {
+    const ip = getClientIp(req);
+    const throttle = initializeRateLimiter.attempt(`ip:${ip}`);
+    if (!throttle.success) {
+      return buildThrottleResponse(throttle.retryAfter);
+    }
+
     const body = await req.json().catch(() => ({}));
     const studentId = String(body?.studentId ?? "").trim();
     const amount = Number(body?.amount);

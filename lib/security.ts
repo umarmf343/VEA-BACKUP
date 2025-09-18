@@ -1,6 +1,5 @@
 import bcrypt from "bcryptjs"
 import jwt from "jsonwebtoken"
-import { rateLimit } from "express-rate-limit"
 import crypto from "crypto"
 
 // Password hashing utilities
@@ -26,15 +25,114 @@ export const verifyToken = (token: string): any => {
   }
 }
 
+export type RateLimitResult = {
+  success: boolean
+  remaining: number
+  retryAfter?: number
+}
+
+type RateLimitEntry = {
+  count: number
+  expiresAt: number
+}
+
+export type RateLimiter = {
+  readonly windowMs: number
+  readonly max: number
+  attempt: (key: string) => RateLimitResult
+  reset: (key?: string) => void
+  getState: (key: string) => RateLimitEntry | undefined
+}
+
+const now = () => Date.now()
+
 // Rate limiting configuration
-export const createRateLimit = (windowMs: number, max: number) => {
-  return rateLimit({
+export const createRateLimit = (windowMs: number, max: number): RateLimiter => {
+  const hits = new Map<string, RateLimitEntry>()
+
+  const cleanupExpired = (key: string) => {
+    const entry = hits.get(key)
+    if (!entry) {
+      return undefined
+    }
+
+    const current = now()
+    if (entry.expiresAt <= current) {
+      hits.delete(key)
+      return undefined
+    }
+
+    return entry
+  }
+
+  return {
     windowMs,
     max,
-    message: "Too many requests from this IP, please try again later.",
-    standardHeaders: true,
-    legacyHeaders: false,
-  })
+    attempt: (key: string) => {
+      const token = key || "anonymous"
+      const current = now()
+      const entry = cleanupExpired(token)
+
+      if (!entry) {
+        hits.set(token, { count: 1, expiresAt: current + windowMs })
+        return {
+          success: true,
+          remaining: Math.max(0, max - 1),
+        }
+      }
+
+      if (entry.count >= max) {
+        return {
+          success: false,
+          remaining: 0,
+          retryAfter: Math.max(0, entry.expiresAt - current),
+        }
+      }
+
+      entry.count += 1
+      hits.set(token, entry)
+
+      return {
+        success: true,
+        remaining: Math.max(0, max - entry.count),
+        retryAfter: entry.expiresAt - current,
+      }
+    },
+    reset: (key?: string) => {
+      if (typeof key === "string" && key.length > 0) {
+        hits.delete(key)
+        return
+      }
+      hits.clear()
+    },
+    getState: (key: string) => cleanupExpired(key),
+  }
+}
+
+export const getClientIp = (
+  request: Request | { headers?: Headers | { get: (key: string) => string | null | undefined }; ip?: string; connection?: { remoteAddress?: string } }
+) => {
+  const anyRequest = request as any
+  const directIp: string | undefined = anyRequest?.ip || anyRequest?.connection?.remoteAddress
+  const headers: Headers | { get: (key: string) => string | null | undefined } | undefined = anyRequest?.headers
+
+  const fromHeader = (name: string) => {
+    if (!headers || typeof headers.get !== "function") {
+      return undefined
+    }
+    const value = headers.get(name)
+    return typeof value === "string" ? value.trim() : undefined
+  }
+
+  const forwarded = fromHeader("x-forwarded-for")
+  const headerIp = forwarded
+    ?.split(",")
+    .map((part) => part.trim())
+    .find((part) => part.length > 0)
+
+  const realIp = fromHeader("x-real-ip")
+
+  return headerIp || realIp || directIp || "unknown"
 }
 
 // Input sanitization
