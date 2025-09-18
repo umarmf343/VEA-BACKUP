@@ -96,7 +96,26 @@ describe("Auth service", () => {
         role: "teacher",
         roleLabel: "Teacher",
         jti: "test-jti",
+        email: "teacher@example.com",
         // intentionally omit name claim
+      },
+      process.env.JWT_SECRET ?? "development-access-secret",
+      { expiresIn: 60 },
+    )
+
+    expect(() => authService.verifyAccessToken(token)).toThrow(AuthError)
+  })
+
+  it("throws when verifying an access token missing an email claim", () => {
+    const token = jwt.sign(
+      {
+        sub: "test-user",
+        type: "access",
+        role: "teacher",
+        roleLabel: "Teacher",
+        jti: "test-jti",
+        name: "Spec User",
+        // intentionally omit email claim
       },
       process.env.JWT_SECRET ?? "development-access-secret",
       { expiresIn: 60 },

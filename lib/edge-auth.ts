@@ -16,7 +16,7 @@ export interface EdgeAccessTokenClaims extends JWTPayload {
   roleLabel: string
   name: string
   jti: string
-  email?: string
+  email: string
 }
 
 const textEncoder = new TextEncoder()
@@ -53,8 +53,15 @@ export async function verifyAccessToken(token: string): Promise<EdgeAccessTokenC
     typeof payload.roleLabel !== "string" ||
     typeof payload.name !== "string" ||
     payload.name.trim().length === 0 ||
-    typeof payload.jti !== "string"
+    typeof payload.jti !== "string" ||
+    typeof payload.email !== "string" ||
+    payload.email.trim().length === 0
   ) {
+    throw new EdgeAuthError("Unauthorized", 401)
+  }
+
+  const normalizedEmail = payload.email.trim().toLowerCase()
+  if (!normalizedEmail) {
     throw new EdgeAuthError("Unauthorized", 401)
   }
 
@@ -63,12 +70,9 @@ export async function verifyAccessToken(token: string): Promise<EdgeAccessTokenC
     sub: payload.sub,
     role: payload.role,
     roleLabel: payload.roleLabel,
-    name: payload.name,
+    name: payload.name.trim(),
     jti: payload.jti,
-  }
-
-  if (typeof payload.email === "string") {
-    claims.email = payload.email
+    email: normalizedEmail,
   }
 
   return claims

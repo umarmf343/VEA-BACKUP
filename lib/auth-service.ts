@@ -414,6 +414,18 @@ class AuthService {
       throw new AuthError("Unauthorized", 401)
     }
 
+    if (typeof payload.email !== "string") {
+      throw new AuthError("Unauthorized", 401)
+    }
+
+    const normalizedEmail = sanitizeEmail(payload.email)
+    if (!normalizedEmail) {
+      throw new AuthError("Unauthorized", 401)
+    }
+
+    payload.name = payload.name.trim()
+    payload.email = normalizedEmail
+
     return payload
   }
 

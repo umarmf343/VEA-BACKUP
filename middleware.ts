@@ -92,6 +92,7 @@ export async function middleware(req: NextRequest) {
       requestHeaders.set("x-user-id", decoded.sub)
       requestHeaders.set("x-user-role", decoded.role)
       requestHeaders.set("x-user-name", decoded.name)
+      requestHeaders.set("x-user-email", decoded.email)
     } catch (error) {
       const status = error instanceof EdgeAuthError ? error.status : 500
       const message = error instanceof EdgeAuthError ? error.message : "Internal server error"

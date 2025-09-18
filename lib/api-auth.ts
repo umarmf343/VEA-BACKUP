@@ -5,6 +5,7 @@ import { AuthError, authService } from "./auth-service"
 export type AuthContext = {
   userId: string
   role: string
+  email: string
   name?: string
 }
 
@@ -38,6 +39,7 @@ export function requireAuth(request: NextRequest): AuthContext {
     return {
       userId: decoded.sub,
       role: decoded.role,
+      email: decoded.email,
       name: decoded.name,
     }
   } catch (error) {
