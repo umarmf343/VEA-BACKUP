@@ -15,6 +15,38 @@
 // NOTE: Replace the in-memory DB with your real persistence in production.
 
 import { NextResponse } from "next/server";
+import { createRateLimit, getClientIp } from "@/lib/security";
+
+export const PAYMENT_VERIFY_RATE_LIMIT = { windowMs: 60 * 1000, max: 20 };
+
+const verifyRateLimiter = createRateLimit(
+  PAYMENT_VERIFY_RATE_LIMIT.windowMs,
+  PAYMENT_VERIFY_RATE_LIMIT.max
+);
+
+const formatRetrySeconds = (retryAfterMs?: number) => {
+  if (!retryAfterMs || retryAfterMs <= 0) {
+    return undefined;
+  }
+  return Math.max(1, Math.ceil(retryAfterMs / 1000)).toString();
+};
+
+const buildThrottleResponse = (retryAfterMs?: number) => {
+  const headers: Record<string, string> = {};
+  const retry = formatRetrySeconds(retryAfterMs);
+  if (retry) {
+    headers["Retry-After"] = retry;
+  }
+
+  return NextResponse.json(
+    { message: "Too many verification attempts. Please slow down." },
+    { status: 429, headers }
+  );
+};
+
+export const resetVerifyRateLimit = () => {
+  verifyRateLimiter.reset();
+};
 
 type Status = "pending" | "paid" | "failed";
 
@@ -35,6 +67,12 @@ function ensureDB(): Payment[] {
 
 export async function POST(req: Request) {
   try {
+    const ip = getClientIp(req);
+    const throttle = verifyRateLimiter.attempt(`ip:${ip}`);
+    if (!throttle.success) {
+      return buildThrottleResponse(throttle.retryAfter);
+    }
+
     const body = await req.json().catch(() => ({}));
     let reference = String(body?.reference || "").trim();
     const id = String(body?.id || "").trim();
