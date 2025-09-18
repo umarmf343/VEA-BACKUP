@@ -28,6 +28,12 @@
 - [ ] Verify file uploads work correctly
 - [ ] Test email notifications
 
+### 5. Branch Protection & CI Checks
+- [ ] Enable branch protection on `main`
+- [ ] Require the following status checks before merging: `Lint & SSR Safety`, `Typecheck`, `Unit Tests & Coverage`, `Integration Tests`, `Build & Preview Artifact`
+- [ ] Enforce admins to respect required reviews and checks
+- [ ] Monitor optional `Dependency Audit (optional)` and `Lighthouse (optional)` jobs for insights when available
+
 ## 🔧 Deployment Steps
 
 ### 1. Build and Package
