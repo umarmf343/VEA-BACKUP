@@ -16,6 +16,8 @@
 
 import { NextResponse } from "next/server";
 
+import { env } from "@/lib/env";
+
 type Status = "pending" | "paid" | "failed";
 
 type Payment = {
@@ -65,7 +67,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "Payment not found." }, { status: 404 });
     }
 
-    const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY || "";
+    const PAYSTACK_SECRET_KEY = env.PAYSTACK_SECRET_KEY;
 
     // DEV fallback: no secret key -> mark as paid
     if (!PAYSTACK_SECRET_KEY) {

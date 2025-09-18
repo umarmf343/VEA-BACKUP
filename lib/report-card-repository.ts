@@ -1,8 +1,10 @@
 import { promises as fs } from "fs"
 import path from "path"
+
+import { env } from "./env"
 import type { ReportCardRecord } from "./report-card-types"
 
-const DATA_DIR = process.env.REPORT_CARD_DATA_DIR || path.join(process.cwd(), "tmp", "data")
+const DATA_DIR = env.REPORT_CARD_DATA_DIR ?? path.join(process.cwd(), "tmp", "data")
 const DATA_FILE = path.join(DATA_DIR, "report-cards.json")
 
 async function ensureStorage() {

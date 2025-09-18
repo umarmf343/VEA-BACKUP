@@ -79,17 +79,22 @@ docker-compose up -d
 \`\`\`
 
 ### Environment Variables
-\`\`\`env
-# Paystack Configuration
-PAYSTACK_SECRET_KEY=sk_live_your_paystack_secret_key
-NEXT_PUBLIC_APP_URL=https://portal2.victoryeducationalacademy.com.ng
 
-# Authentication
-JWT_SECRET=your_jwt_secret_key
+Runtime configuration is validated on startup by [`lib/env.ts`](./lib/env.ts). The server will throw a descriptive error if any mandatory value is missing so configuration issues surface immediately. Copy `.env.example` to `.env.local` (or the appropriate environment file) and replace the placeholders with real secrets:
 
-# Application
-NODE_ENV=production
-\`\`\`
+| Variable | Required | Description |
+| --- | --- | --- |
+| `NODE_ENV` | ✅ | Node environment (`development`, `test`, or `production`). |
+| `DATABASE_URL` | ✅ | Connection string for the primary database. |
+| `JWT_SECRET` | ✅ | Secret used to sign and verify authentication tokens. |
+| `ENCRYPTION_KEY` | ✅ | Key material for AES-256-GCM encryption helpers. |
+| `PAYSTACK_SECRET_KEY` | ✅ | Server-side Paystack secret key for API calls. |
+| `NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY` | ✅ | Client-side Paystack public key exposed to the browser. |
+| `NEXT_PUBLIC_APP_URL` | ✅ | Fully qualified base URL of the deployed app (used in callbacks). |
+| `REPORT_CARD_DATA_DIR` | ➖ | Optional path override for report-card JSON storage. |
+| `SKIP_ENV_VALIDATION` | ➖ | Set to `true` only for local prototyping to bypass validation. |
+
+> ℹ️ **Tip:** Keep `SKIP_ENV_VALIDATION` unset (or `false`) in all automated environments so CI/CD fails fast when configuration drifts.
 
 ### User Roles & Sample Credentials
 

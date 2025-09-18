@@ -3,6 +3,8 @@ import jwt from "jsonwebtoken"
 import { rateLimit } from "express-rate-limit"
 import crypto from "crypto"
 
+import { env } from "./env"
+
 // Password hashing utilities
 export const hashPassword = async (password: string): Promise<string> => {
   const saltRounds = 12
@@ -15,12 +17,12 @@ export const verifyPassword = async (password: string, hash: string): Promise<bo
 
 // JWT utilities
 export const generateToken = (payload: any): string => {
-  return jwt.sign(payload, process.env.JWT_SECRET!, { expiresIn: "24h" })
+  return jwt.sign(payload, env.JWT_SECRET, { expiresIn: "24h" })
 }
 
 export const verifyToken = (token: string): any => {
   try {
-    return jwt.verify(token, process.env.JWT_SECRET!)
+    return jwt.verify(token, env.JWT_SECRET)
   } catch (error) {
     throw new Error("Invalid token")
   }
@@ -72,7 +74,7 @@ export const encryptSensitiveData = (data: string): string => {
   }
 
   const algorithm = "aes-256-gcm"
-  const key = process.env.ENCRYPTION_KEY || "default-key-change-in-production"
+  const key = env.ENCRYPTION_KEY
   const keyBuffer = crypto.scryptSync(key, "salt", 32)
   const iv = crypto.randomBytes(16)
 
@@ -92,7 +94,7 @@ export const decryptSensitiveData = (encryptedData: string): string => {
   }
 
   const algorithm = "aes-256-gcm"
-  const key = process.env.ENCRYPTION_KEY || "default-key-change-in-production"
+  const key = env.ENCRYPTION_KEY
   const keyBuffer = crypto.scryptSync(key, "salt", 32)
 
   const [ivHex, authTagHex, encryptedHex] = encryptedData.split(":")

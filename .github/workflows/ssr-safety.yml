@@ -9,6 +9,16 @@ on:
 jobs:
   ssr-safety:
     runs-on: ubuntu-latest
+    env:
+      NODE_ENV: test
+      JWT_SECRET: test_jwt_secret_value_1234567890
+      ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef
+      PAYSTACK_SECRET_KEY: sk_test_dummy_secret_key
+      NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY: pk_test_dummy_public_key
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      DATABASE_URL: mysql://user:password@localhost:3306/vea_ci
+      REPORT_CARD_DATA_DIR: tmp/data
+      SKIP_ENV_VALIDATION: "false"
     
     steps:
     - uses: actions/checkout@v3
@@ -33,5 +43,3 @@ jobs:
     
     - name: Build Check
       run: npm run build
-      env:
-        SKIP_ENV_VALIDATION: true
