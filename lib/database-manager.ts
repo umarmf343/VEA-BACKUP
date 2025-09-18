@@ -2,6 +2,12 @@ import { randomUUID } from "crypto"
 
 import { safeStorage } from "./safe-storage"
 
+const USER_CACHE_TTL_MS = 5 * 60 * 1000
+
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase()
+}
+
 export type PaymentStatus = "pending" | "paid" | "failed"
 export type StudentPaymentStatus = "paid" | "pending" | "overdue"
 export type StudentStatus = "active" | "inactive"
@@ -232,14 +238,25 @@ export interface UserRecord {
   createdAt: string
   updatedAt?: string
   passwordHash?: string
+  lastLogin?: string
   studentIds?: string[]
   subjects?: string[]
+}
+
+export interface RefreshTokenRecord {
+  id: string
+  userId: string
+  issuedAt: string
+  expiresAt: string
+  rotated: boolean
+  replacedBy?: string
 }
 
 type Collections = {
   students: Student[]
   classes: ClassRecord[]
   users: UserRecord[]
+  refreshTokens: RefreshTokenRecord[]
   payments: Payment[]
   receipts: Receipt[]
   feeStructure: FeeStructure[]
@@ -394,12 +411,24 @@ const DEFAULT_DATA: Collections = {
   ],
   users: [
     {
+      id: "usr-super-admin-1",
+      name: "Super Administrator",
+      email: "superadmin@vea.edu.ng",
+      role: "super_admin",
+      status: "active",
+      createdAt: "2024-01-09T08:00:00.000Z",
+      passwordHash:
+        "c1d2e3f405162738c1d2e3f405162738:b33b024944a9ab998b9632b87ce1a15eb7553756a8a3d53e52390777d0bc87578081127eb7fd55f894d03b4ef49158bfc928f22869a5832dc8d63930cc5244bc",
+    },
+    {
       id: "usr-admin-1",
       name: "Victoria Umeh",
       email: "admin@vea.edu.ng",
       role: "admin",
       status: "active",
       createdAt: "2024-01-10T08:00:00.000Z",
+      passwordHash:
+        "a1b2c3d4e5f60718a1b2c3d4e5f60718:7c91938b80e242c80d68a5e1d21883c753c5180bab223dc2cb15ad097aba84e6abcb75d4d9f4812fd7d86a432719c490637005f23a9c3fe326bec418b94ab98c",
     },
     {
       id: "usr-teacher-1",
@@ -437,6 +466,7 @@ const DEFAULT_DATA: Collections = {
       studentIds: ["std-001"],
     },
   ],
+  refreshTokens: [],
   payments: [
     {
       id: "pay-001",
@@ -741,6 +771,10 @@ export class DatabaseManager {
   private memoryStore = new Map<CollectionKey, string>()
   private collectionListeners = new Map<CollectionKey, Set<(value: Collections[CollectionKey]) => void>>()
   private eventListeners = new Map<EventName, Set<(payload: unknown) => void>>()
+  private userEmailIndex = new Map<string, string>()
+  private userCache = new Map<string, { record: UserRecord; expiresAt: number }>()
+  private refreshTokenCache = new Map<string, RefreshTokenRecord>()
+  private userRefreshTokenIndex = new Map<string, Set<string>>()
 
   constructor() {
     if (DatabaseManager.instance) {
@@ -753,6 +787,85 @@ export class DatabaseManager {
 
   static getInstance(): DatabaseManager {
     return new DatabaseManager()
+  }
+
+  private cacheUserRecord(user: UserRecord) {
+    const normalizedEmail = normalizeEmail(user.email)
+    if (normalizedEmail) {
+      this.userEmailIndex.set(normalizedEmail, user.id)
+    }
+
+    this.userCache.set(user.id, {
+      record: clone(user),
+      expiresAt: Date.now() + USER_CACHE_TTL_MS,
+    })
+  }
+
+  private refreshUserIndexes(users: UserRecord[]) {
+    this.userEmailIndex.clear()
+    this.userCache.clear()
+
+    const now = Date.now()
+    users.forEach((user) => {
+      const normalizedEmail = normalizeEmail(user.email)
+      if (normalizedEmail) {
+        this.userEmailIndex.set(normalizedEmail, user.id)
+      }
+
+      this.userCache.set(user.id, {
+        record: clone(user),
+        expiresAt: now + USER_CACHE_TTL_MS,
+      })
+    })
+  }
+
+  private purgeExpiredUserCache() {
+    const now = Date.now()
+    for (const [userId, entry] of this.userCache.entries()) {
+      if (entry.expiresAt <= now) {
+        this.userCache.delete(userId)
+      }
+    }
+  }
+
+  private getCachedUserRecord(userId: string): UserRecord | null {
+    const entry = this.userCache.get(userId)
+    if (!entry) {
+      return null
+    }
+
+    if (entry.expiresAt <= Date.now()) {
+      this.userCache.delete(userId)
+      return null
+    }
+
+    return clone(entry.record)
+  }
+
+  private cacheRefreshToken(token: RefreshTokenRecord) {
+    const cloned = clone(token)
+    this.refreshTokenCache.set(token.id, cloned)
+    const existing = this.userRefreshTokenIndex.get(token.userId) ?? new Set<string>()
+    existing.add(token.id)
+    this.userRefreshTokenIndex.set(token.userId, existing)
+  }
+
+  private refreshRefreshTokenIndexes(tokens: RefreshTokenRecord[]) {
+    this.refreshTokenCache.clear()
+    this.userRefreshTokenIndex.clear()
+
+    tokens.forEach((token) => {
+      this.cacheRefreshToken(token)
+    })
+  }
+
+  private getCachedRefreshToken(tokenId: string): RefreshTokenRecord | null {
+    const cached = this.refreshTokenCache.get(tokenId)
+    if (!cached) {
+      return null
+    }
+
+    return clone(cached)
   }
 
   private bootstrapDefaults() {
@@ -770,6 +883,16 @@ export class DatabaseManager {
         // Ignore storage errors (e.g., during SSR)
       }
     })
+
+    const users = this.getCollection("users")
+    if (Array.isArray(users)) {
+      this.refreshUserIndexes(users)
+    }
+
+    const refreshTokens = this.getCollection("refreshTokens")
+    if (Array.isArray(refreshTokens)) {
+      this.refreshRefreshTokenIndexes(refreshTokens)
+    }
   }
 
   private storageKey(key: CollectionKey) {
@@ -818,6 +941,11 @@ export class DatabaseManager {
 
   private setCollection<K extends CollectionKey>(key: K, value: Collections[K]) {
     this.writeRaw(key, JSON.stringify(value))
+    if (key === "users") {
+      this.refreshUserIndexes(value as UserRecord[])
+    } else if (key === "refreshTokens") {
+      this.refreshRefreshTokenIndexes(value as RefreshTokenRecord[])
+    }
     this.notifyCollection(key)
   }
 
@@ -1514,8 +1642,48 @@ export class DatabaseManager {
     return finalGrade
   }
 
+  async getUserByEmail(email: string) {
+    const normalized = normalizeEmail(email)
+    if (!normalized) {
+      return null
+    }
+
+    this.purgeExpiredUserCache()
+
+    const indexedId = this.userEmailIndex.get(normalized)
+    if (indexedId) {
+      const cached = this.getCachedUserRecord(indexedId)
+      if (cached) {
+        return cached
+      }
+    }
+
+    const users = this.getCollection("users")
+    const match = users.find((user) => normalizeEmail(user.email) === normalized) ?? null
+    if (match) {
+      this.cacheUserRecord(match)
+      return clone(match)
+    }
+
+    return null
+  }
+
   async getUser(userId: string) {
-    return clone(this.getCollection("users").find((user) => user.id === userId) ?? null)
+    this.purgeExpiredUserCache()
+
+    const cached = this.getCachedUserRecord(userId)
+    if (cached) {
+      return cached
+    }
+
+    const users = this.getCollection("users")
+    const match = users.find((user) => user.id === userId) ?? null
+    if (match) {
+      this.cacheUserRecord(match)
+      return clone(match)
+    }
+
+    return null
   }
 
   async getUsersByRole(role: string) {
@@ -1524,6 +1692,90 @@ export class DatabaseManager {
 
   async getAllUsers() {
     return clone(this.getCollection("users"))
+  }
+
+  async saveRefreshToken(record: {
+    id?: string
+    userId: string
+    expiresAt: string
+    rotated?: boolean
+    replacedBy?: string
+    issuedAt?: string
+  }) {
+    const refreshToken: RefreshTokenRecord = {
+      id: record.id ?? randomUUID(),
+      userId: record.userId,
+      issuedAt: record.issuedAt ?? new Date().toISOString(),
+      expiresAt: record.expiresAt,
+      rotated: record.rotated ?? false,
+      replacedBy: record.replacedBy,
+    }
+
+    this.updateCollection("refreshTokens", (current) => {
+      const withoutExisting = current.filter((token) => token.id !== refreshToken.id)
+      return [...withoutExisting, refreshToken]
+    })
+
+    return clone(refreshToken)
+  }
+
+  async getRefreshToken(tokenId: string) {
+    const cached = this.getCachedRefreshToken(tokenId)
+    if (cached) {
+      return cached
+    }
+
+    const tokens = this.getCollection("refreshTokens")
+    const match = tokens.find((token) => token.id === tokenId) ?? null
+    if (!match) {
+      return null
+    }
+
+    this.cacheRefreshToken(match)
+    return clone(match)
+  }
+
+  async updateRefreshToken(tokenId: string, updates: Partial<RefreshTokenRecord>) {
+    let updated: RefreshTokenRecord | null = null
+    this.updateCollection("refreshTokens", (current) =>
+      current.map((token) => {
+        if (token.id !== tokenId) {
+          return token
+        }
+
+        updated = {
+          ...token,
+          ...updates,
+        }
+
+        return updated!
+      }),
+    )
+
+    return updated ? clone(updated) : null
+  }
+
+  async deleteUserRefreshTokens(userId: string) {
+    this.updateCollection(
+      "refreshTokens",
+      (current) => current.filter((token) => token.userId !== userId),
+    )
+  }
+
+  async purgeExpiredRefreshTokens(referenceTime: number = Date.now()) {
+    const cutoff = Number.isFinite(referenceTime) ? referenceTime : Date.now()
+
+    this.updateCollection(
+      "refreshTokens",
+      (current) =>
+        current.filter((token) => {
+          const expiresAt = Date.parse(token.expiresAt)
+          if (Number.isNaN(expiresAt)) {
+            return false
+          }
+          return expiresAt > cutoff
+        }),
+    )
   }
 
   async createUser(user: Omit<UserRecord, "id" | "createdAt"> & { id?: string }) {
@@ -1536,6 +1788,7 @@ export class DatabaseManager {
       createdAt: new Date().toISOString(),
       updatedAt: user.updatedAt,
       passwordHash: user.passwordHash,
+      lastLogin: user.lastLogin,
       studentIds: user.studentIds?.slice(),
       subjects: user.subjects?.slice(),
     }

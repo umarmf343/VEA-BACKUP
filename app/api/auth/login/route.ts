@@ -1,53 +1,36 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { verifyPassword, generateToken, sanitizeInput } from "@/lib/security"
-import { getUserByEmail } from "@/lib/database"
+
+import { AuthError, authService } from "@/lib/auth-service"
+import { sanitizeInput } from "@/lib/security"
+
+export const runtime = "nodejs"
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
 
-    // Sanitize inputs
-    const email = sanitizeInput(body.email)
-    const password = sanitizeInput(body.password)
+    const email = sanitizeInput(typeof body.email === "string" ? body.email : "")
+    const password = typeof body.password === "string" ? body.password : ""
 
     // Validate input
     if (!email || !password) {
       return NextResponse.json({ error: "Email and password are required" }, { status: 400 })
     }
 
-    // Get user from database
-    const user = await getUserByEmail(email)
-    if (!user) {
-      return NextResponse.json({ error: "Invalid credentials" }, { status: 401 })
-    }
-
-    // Verify password
-    const storedHash = user.passwordHash ?? ""
-    if (!storedHash) {
-      return NextResponse.json({ error: "Invalid credentials" }, { status: 401 })
-    }
-
-    const isValidPassword = await verifyPassword(password, storedHash)
-    if (!isValidPassword) {
-      return NextResponse.json({ error: "Invalid credentials" }, { status: 401 })
-    }
-
-    // Generate JWT token
-    const token = generateToken({
-      userId: user.id,
-      email: user.email,
-      role: user.role,
-    })
-
-    // Return user data without password
-    const { passwordHash, ...userWithoutPassword } = user
+    const { user, tokens } = await authService.login(email, password)
 
     return NextResponse.json({
-      user: userWithoutPassword,
-      token,
+      user,
+      token: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      expiresAt: tokens.accessTokenExpiresAt,
+      refreshExpiresAt: tokens.refreshTokenExpiresAt,
       message: "Login successful",
     })
   } catch (error) {
+    if (error instanceof AuthError) {
+      return NextResponse.json({ error: error.message }, { status: error.status })
+    }
     console.error("Login error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }

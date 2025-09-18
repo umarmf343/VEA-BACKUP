@@ -30,6 +30,8 @@ jest.mock("next/router", () => ({
 process.env.PAYSTACK_SECRET_KEY = "sk_test_mock_key"
 process.env.NEXT_PUBLIC_APP_URL = "http://localhost:3000"
 process.env.NODE_ENV = "test"
+process.env.JWT_SECRET = process.env.JWT_SECRET || "test-secret"
+process.env.JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || "test-refresh-secret"
 
 // Global test utilities
 global.mockUser = {

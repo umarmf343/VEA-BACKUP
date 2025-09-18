@@ -33,6 +33,13 @@ describe("Server-side sensitive data helpers", () => {
     expect(decrypted).toBe(secret)
   })
 
+  it("decodes legacy base64 payloads without delimiters", () => {
+    const legacySecret = "Legacy payload"
+    const encoded = Buffer.from(legacySecret, "utf8").toString("base64")
+
+    expect(decryptSensitiveData(encoded)).toBe(legacySecret)
+  })
+
   it("throws for malformed payloads", () => {
     expect(() => decryptSensitiveData("corrupted")).toThrowError("Invalid encrypted data format")
   })

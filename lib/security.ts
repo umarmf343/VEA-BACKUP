@@ -1,31 +1,28 @@
-import bcrypt from "bcryptjs"
-import jwt from "jsonwebtoken"
 import { rateLimit } from "express-rate-limit"
 import crypto from "crypto"
 
-// Password hashing utilities
-export const hashPassword = async (password: string): Promise<string> => {
-  const saltRounds = 12
-  return await bcrypt.hash(password, saltRounds)
-}
+import { authService } from "./auth-service"
 
-export const verifyPassword = async (password: string, hash: string): Promise<boolean> => {
-  return await bcrypt.compare(password, hash)
-}
-
-// JWT utilities
-export const generateToken = (payload: any): string => {
-  return jwt.sign(payload, process.env.JWT_SECRET!, { expiresIn: "24h" })
-}
-
-export const verifyToken = (token: string): any => {
+function tryDecodeBase64(value: string): string | null {
   try {
-    return jwt.verify(token, process.env.JWT_SECRET!)
-  } catch (error) {
-    throw new Error("Invalid token")
+    const buffer = Buffer.from(value, "base64")
+    if (buffer.byteLength === 0) {
+      return null
+    }
+
+    const normalizedInput = value.replace(/=+$/, "")
+    const normalizedOutput = buffer.toString("base64").replace(/=+$/, "")
+    if (normalizedInput !== normalizedOutput) {
+      return null
+    }
+
+    return buffer.toString("utf8")
+  } catch {
+    return null
   }
 }
 
+// Password hashing utilities
 // Rate limiting configuration
 export const createRateLimit = (windowMs: number, max: number) => {
   return rateLimit({
@@ -47,21 +44,12 @@ export const sanitizeInput = (input: string): string => {
 }
 
 // Role-based access control
+export const hashPassword = authService.hashPassword.bind(authService)
+
+export const verifyPassword = authService.verifyPassword.bind(authService)
+
 export const hasPermission = (userRole: string, requiredRoles: string[]): boolean => {
-  const roleHierarchy = {
-    "Super Admin": 7,
-    Admin: 6,
-    Teacher: 5,
-    Accountant: 4,
-    Librarian: 3,
-    Parent: 2,
-    Student: 1,
-  }
-
-  const userLevel = roleHierarchy[userRole as keyof typeof roleHierarchy] || 0
-  const requiredLevel = Math.max(...requiredRoles.map((role) => roleHierarchy[role as keyof typeof roleHierarchy] || 0))
-
-  return userLevel >= requiredLevel
+  return authService.hasPermission(userRole, requiredRoles)
 }
 
 // Data encryption utilities
@@ -86,19 +74,40 @@ export const encryptSensitiveData = (data: string): string => {
 }
 
 export const decryptSensitiveData = (encryptedData: string): string => {
-  if (typeof window !== "undefined") {
-    // Client-side fallback
-    return Buffer.from(encryptedData, "base64").toString("utf-8")
+  const input = (encryptedData ?? "").trim()
+  if (!input) {
+    throw new Error("Invalid encrypted data format")
+  }
+
+  const isNodeEnv = typeof process !== "undefined" && !!process.versions?.node
+  const decodedLegacy = tryDecodeBase64(input)
+  const hasCipherSegments = input.includes(":")
+
+  if (!hasCipherSegments) {
+    if (decodedLegacy !== null) {
+      return decodedLegacy
+    }
+    throw new Error("Invalid encrypted data format")
+  }
+
+  if (typeof window !== "undefined" && !isNodeEnv) {
+    if (decodedLegacy !== null) {
+      return decodedLegacy
+    }
+    throw new Error("Invalid encrypted data format")
+  }
+
+  const [ivHex, authTagHex, encryptedHex] = input.split(":")
+  if (!ivHex || !authTagHex || !encryptedHex) {
+    if (decodedLegacy !== null) {
+      return decodedLegacy
+    }
+    throw new Error("Invalid encrypted data format")
   }
 
   const algorithm = "aes-256-gcm"
   const key = process.env.ENCRYPTION_KEY || "default-key-change-in-production"
   const keyBuffer = crypto.scryptSync(key, "salt", 32)
-
-  const [ivHex, authTagHex, encryptedHex] = encryptedData.split(":")
-  if (!ivHex || !authTagHex || !encryptedHex) {
-    throw new Error("Invalid encrypted data format")
-  }
 
   const iv = Buffer.from(ivHex, "hex")
   const authTag = Buffer.from(authTagHex, "hex")
