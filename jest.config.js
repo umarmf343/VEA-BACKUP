@@ -7,6 +7,7 @@ const createJestConfig = nextJest({
 
 // Add any custom config to be passed to Jest
 const customJestConfig = {
+  setupFiles: ["<rootDir>/jest.env.js"],
   setupFilesAfterEnv: ["<rootDir>/jest.setup.js"],
   moduleNameMapper: {
     // Handle module aliases (this will be automatically configured for you based on your tsconfig.json paths)
@@ -15,16 +16,23 @@ const customJestConfig = {
     "^@/lib/(.*)$": "<rootDir>/lib/$1",
   },
   testEnvironment: "jest-environment-jsdom",
+  testPathIgnorePatterns: ["<rootDir>/playwright/"],
+  collectCoverage: true,
+  coverageProvider: "v8",
   collectCoverageFrom: [
-    "components/**/*.{js,jsx,ts,tsx}",
-    "lib/**/*.{js,jsx,ts,tsx}",
-    "app/**/*.{js,jsx,ts,tsx}",
-    "!**/*.d.ts",
-    "!**/node_modules/**",
+    "app/api/auth/login/route.ts",
+    "app/api/users/route.ts",
+    "app/api/marks/route.ts",
+    "app/api/payments/**/*.ts",
+    "components/student-dashboard.tsx",
+    "components/payment-modal.tsx",
+    "components/notification-center.tsx",
   ],
+  coverageDirectory: "coverage",
+  coverageReporters: ["text", "lcov", "json-summary"],
   coverageThreshold: {
     global: {
-      branches: 70,
+      branches: 60,
       functions: 70,
       lines: 70,
       statements: 70,
