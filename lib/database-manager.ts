@@ -5,6 +5,7 @@ import { safeStorage } from "./safe-storage"
 export type PaymentStatus = "pending" | "paid" | "failed"
 export type StudentPaymentStatus = "paid" | "pending" | "overdue"
 export type StudentStatus = "active" | "inactive"
+export type UserStatus = "active" | "inactive" | "suspended"
 
 export interface StudentGrade {
   subject: string
@@ -228,7 +229,7 @@ export interface UserRecord {
   name: string
   email: string
   role: string
-  status: StudentStatus
+  status: UserStatus
   createdAt: string
   updatedAt?: string
   passwordHash?: string

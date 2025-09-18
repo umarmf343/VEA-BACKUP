@@ -2,6 +2,12 @@ import { randomUUID } from "crypto"
 
 export type PaymentStatus = "pending" | "paid" | "failed"
 
+export const PAYMENT_STATUS: Record<PaymentStatus, PaymentStatus> = {
+  pending: "pending",
+  paid: "paid",
+  failed: "failed",
+}
+
 export interface PaymentRecord {
   id: string
   studentId: string
@@ -59,7 +65,10 @@ function seedPayments(): PaymentRecord[] {
 }
 
 function ensureStore(): PaymentRecord[] {
-  const g = getGlobal()
+  const g = getGlobal() as GlobalWithPayments & { _PAYMENTS?: PaymentRecord[] }
+  if (Array.isArray(g._PAYMENTS)) {
+    g[GLOBAL_KEY] = g._PAYMENTS
+  }
   if (!g[GLOBAL_KEY]) {
     g[GLOBAL_KEY] = seedPayments()
   }
@@ -133,6 +142,9 @@ export function markPaymentAsPaid(id: string): MarkPaymentResult {
 }
 
 export function resetPaymentsStore() {
-  const g = getGlobal()
+  const g = getGlobal() as GlobalWithPayments & { _PAYMENTS?: PaymentRecord[] }
   delete g[GLOBAL_KEY]
+  if (g._PAYMENTS) {
+    delete g._PAYMENTS
+  }
 }

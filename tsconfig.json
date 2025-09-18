@@ -32,6 +32,12 @@
         "name": "next"
       }
     ],
+    "types": [
+      "node",
+      "jest",
+      "@testing-library/jest-dom",
+      "@playwright/test"
+    ],
     "esModuleInterop": true,
     "isolatedModules": true
   },
