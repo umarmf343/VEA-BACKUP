@@ -2,6 +2,7 @@ import type { Prisma, Student, StudentPaymentStatus, StudentStatus } from "@pris
 import { StudentPaymentStatus as PaymentStatusEnum, StudentStatus as StatusEnum } from "@prisma/client"
 
 import { prisma } from "../prisma"
+import { toDate, toJsonOptional } from "./utils"
 
 export type CreateStudentInput = {
   name: string
@@ -19,11 +20,11 @@ export type CreateStudentInput = {
   guardianPhone?: string | null
   bloodGroup?: string | null
   admissionDate?: string | Date | null
-  subjects?: Prisma.JsonValue
-  attendance?: Prisma.JsonValue
-  grades?: Prisma.JsonValue
+  subjects?: unknown
+  attendance?: unknown
+  grades?: unknown
   photoUrl?: string | null
-  metadata?: Prisma.JsonValue
+  metadata?: unknown
 }
 
 export type UpdateStudentInput = Partial<CreateStudentInput>
@@ -38,19 +39,21 @@ function toCreateData(data: CreateStudentInput): Prisma.StudentCreateInput {
     subjects,
     attendance,
     grades,
+    metadata,
     ...rest
   } = data
 
   return {
     ...rest,
     class: classId ? { connect: { id: classId } } : undefined,
-    dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : undefined,
-    admissionDate: admissionDate ? new Date(admissionDate) : undefined,
+    dateOfBirth: toDate(dateOfBirth),
+    admissionDate: toDate(admissionDate),
     paymentStatus: paymentStatus ?? PaymentStatusEnum.PENDING,
     status: status ?? StatusEnum.ACTIVE,
-    subjects: subjects ?? undefined,
-    attendance: attendance ?? undefined,
-    grades: grades ?? undefined,
+    subjects: toJsonOptional(subjects),
+    attendance: toJsonOptional(attendance),
+    grades: toJsonOptional(grades),
+    metadata: toJsonOptional(metadata),
   }
 }
 
@@ -68,7 +71,7 @@ function toUpdateData(data: UpdateStudentInput): Prisma.StudentUpdateInput {
   if (data.guardianPhone !== undefined) result.guardianPhone = data.guardianPhone
   if (data.bloodGroup !== undefined) result.bloodGroup = data.bloodGroup
   if (data.photoUrl !== undefined) result.photoUrl = data.photoUrl
-  if (data.metadata !== undefined) result.metadata = data.metadata
+  if (data.metadata !== undefined) result.metadata = toJsonOptional(data.metadata)
 
   if (data.classId !== undefined) {
     result.class =
@@ -76,11 +79,11 @@ function toUpdateData(data: UpdateStudentInput): Prisma.StudentUpdateInput {
   }
 
   if (data.dateOfBirth !== undefined) {
-    result.dateOfBirth = data.dateOfBirth ? new Date(data.dateOfBirth) : null
+    result.dateOfBirth = toDate(data.dateOfBirth)
   }
 
   if (data.admissionDate !== undefined) {
-    result.admissionDate = data.admissionDate ? new Date(data.admissionDate) : null
+    result.admissionDate = toDate(data.admissionDate)
   }
 
   if (data.paymentStatus !== undefined) {
@@ -92,21 +95,23 @@ function toUpdateData(data: UpdateStudentInput): Prisma.StudentUpdateInput {
   }
 
   if (data.subjects !== undefined) {
-    result.subjects = data.subjects
+    result.subjects = toJsonOptional(data.subjects)
   }
 
   if (data.attendance !== undefined) {
-    result.attendance = data.attendance
+    result.attendance = toJsonOptional(data.attendance)
   }
 
   if (data.grades !== undefined) {
-    result.grades = data.grades
+    result.grades = toJsonOptional(data.grades)
   }
 
   return result
 }
 
-export async function listStudents() {
+type StudentWithClass = Prisma.StudentGetPayload<{ include: { class: true } }>
+
+export async function listStudents(): Promise<StudentWithClass[]> {
   const students = await prisma.student.findMany({
     include: { class: true },
     orderBy: { createdAt: "desc" },
@@ -115,14 +120,14 @@ export async function listStudents() {
   return students
 }
 
-export async function findStudentById(id: string) {
+export async function findStudentById(id: string): Promise<StudentWithClass | null> {
   return prisma.student.findUnique({
     where: { id },
     include: { class: true },
   })
 }
 
-export async function findStudentsByClass(classId: string) {
+export async function findStudentsByClass(classId: string): Promise<StudentWithClass[]> {
   return prisma.student.findMany({
     where: { classId },
     include: { class: true },
@@ -130,14 +135,14 @@ export async function findStudentsByClass(classId: string) {
   })
 }
 
-export async function createStudent(data: CreateStudentInput) {
+export async function createStudent(data: CreateStudentInput): Promise<StudentWithClass> {
   return prisma.student.create({
     data: toCreateData(data),
     include: { class: true },
   })
 }
 
-export async function updateStudent(id: string, data: UpdateStudentInput) {
+export async function updateStudent(id: string, data: UpdateStudentInput): Promise<StudentWithClass> {
   return prisma.student.update({
     where: { id },
     data: toUpdateData(data),
@@ -145,10 +150,13 @@ export async function updateStudent(id: string, data: UpdateStudentInput) {
   })
 }
 
-export async function deleteStudent(id: string) {
+export async function deleteStudent(id: string): Promise<StudentWithClass> {
   await prisma.assignmentSubmission.deleteMany({ where: { studentId: id } })
   await prisma.payment.deleteMany({ where: { studentId: id } })
-  return prisma.student.delete({ where: { id } })
+  return prisma.student.delete({
+    where: { id },
+    include: { class: true },
+  })
 }
 
-export type StudentWithRelations = Student & { class: { id: string; name: string } | null }
+export type StudentWithRelations = StudentWithClass

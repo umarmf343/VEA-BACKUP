@@ -1,17 +1,19 @@
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 
-import { PrismaClient } from "@prisma/client"
+import type { PrismaClient as PrismaClientType } from "@prisma/client"
 
 const globalForPrisma = globalThis as unknown as {
-  prisma?: PrismaClient
+  prisma?: PrismaClientType
 }
 
-function createTestClient() {
+function createTestClient(): PrismaClientType {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { newDb } = require("pg-mem")
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { PrismaPg } = require("@prisma/adapter-pg")
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { PrismaClient } = require("@prisma/client/edge")
 
   const db = newDb()
   const adapter = new PrismaPg(db.adapters.createPg())
@@ -19,17 +21,24 @@ function createTestClient() {
   const sql = readFileSync(migrationPath, "utf8")
   db.public.none(sql)
 
-  return new PrismaClient({ adapter, log: ["error"] })
+  return new PrismaClient({ adapter, log: ["error"] }) as unknown as PrismaClientType
 }
 
-function createPrismaClient() {
+function createStandardClient(): PrismaClientType {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { PrismaClient } = require("@prisma/client") as typeof import("@prisma/client")
+
+  return new PrismaClient({
+    log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"],
+  }) as PrismaClientType
+}
+
+function createPrismaClient(): PrismaClientType {
   if (process.env.NODE_ENV === "test") {
     return createTestClient()
   }
 
-  return new PrismaClient({
-    log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"],
-  })
+  return createStandardClient()
 }
 
 export const prisma = globalForPrisma.prisma ?? createPrismaClient()
@@ -38,4 +47,4 @@ if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma
 }
 
-export type PrismaTransaction = Parameters<PrismaClient["$transaction"]>[0]
+export type PrismaTransaction = Parameters<PrismaClientType["$transaction"]>[0]

@@ -4,8 +4,6 @@ import type {
   Assignment as PrismaAssignment,
   AssignmentSubmission as PrismaAssignmentSubmission,
   Class as PrismaClass,
-  Payment as PrismaPayment,
-  Receipt as PrismaReceipt,
   Student as PrismaStudent,
   User as PrismaUser,
 } from "@prisma/client"
@@ -26,6 +24,7 @@ import {
   studentRepository,
   userRepository,
 } from "./repositories"
+import type { NormalisedPayment, NormalisedReceipt } from "./repositories/payments"
 
 export type PaymentStatus = "pending" | "paid" | "failed"
 export type StudentPaymentStatus = "paid" | "pending" | "overdue"
@@ -464,11 +463,11 @@ function mapPaymentStatus(status: string): PaymentStatus {
   }
 }
 
-function mapPaymentEntity(payment: PrismaPayment & { receipts?: PrismaReceipt[] }): Payment {
+function mapPaymentEntity(payment: NormalisedPayment): Payment {
   return {
     id: payment.id,
     studentId: payment.studentId,
-    amount: Number(payment.amount),
+    amount: payment.amount,
     status: mapPaymentStatus(payment.status),
     method: payment.method,
     date: payment.paidAt ? payment.paidAt.toISOString() : payment.createdAt.toISOString(),
@@ -478,13 +477,13 @@ function mapPaymentEntity(payment: PrismaPayment & { receipts?: PrismaReceipt[] 
   }
 }
 
-function mapReceiptEntity(receipt: PrismaReceipt): Receipt {
+function mapReceiptEntity(receipt: NormalisedReceipt): Receipt {
   return {
     id: receipt.id,
     paymentId: receipt.paymentId,
     issuedTo: receipt.issuedTo,
     issuedAt: receipt.issuedAt.toISOString(),
-    amount: Number(receipt.amount),
+    amount: receipt.amount,
     items: Array.isArray(receipt.items)
       ? (receipt.items as Array<{ label: string; amount: number }>).map((item) => ({
           label: String(item.label),
@@ -1394,14 +1393,14 @@ export class DatabaseManager {
     return finalRecord
   }
 
-  async getPayments() {
+  async getPayments(): Promise<Payment[]> {
     const payments = await paymentRepository.listPayments()
-    return payments.map((payment) => mapPaymentEntity(payment as unknown as PrismaPayment))
+    return payments.map((payment) => mapPaymentEntity(payment))
   }
 
-  async getReceipts() {
+  async getReceipts(): Promise<Receipt[]> {
     const receipts = await paymentRepository.listReceipts()
-    return receipts.map((receipt) => mapReceiptEntity(receipt as unknown as PrismaReceipt))
+    return receipts.map((receipt) => mapReceiptEntity(receipt))
   }
 
   async getFeeStructure() {
@@ -1450,7 +1449,7 @@ export class DatabaseManager {
     })
 
     this.emit("paymentProcessed", payment)
-    return mapReceiptEntity(receipt as unknown as PrismaReceipt)
+    return mapReceiptEntity(receipt)
   }
 
   async generateFinancialReport(type: string, payments: Payment[]) {
@@ -1484,7 +1483,7 @@ export class DatabaseManager {
       paidAt: new Date().toISOString(),
     })
 
-    const payment = mapPaymentEntity(created as unknown as PrismaPayment)
+    const payment = mapPaymentEntity(created)
     this.emit("paymentProcessed", payment)
     this.emit("financialDataUpdated", await this.getFinancialSummary("current"))
     return payment

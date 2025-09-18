@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -36,6 +36,7 @@ type Student = StudentPayload & {
   admissionDate: string | null
   dateOfBirth: string | null
   photoUrl?: string | null
+  subjects: string[]
 }
 
 export function StudentManagement() {
@@ -56,7 +57,22 @@ export function StudentManagement() {
   const updateStudentMutation = useUpdateStudent()
   const deleteStudentMutation = useDeleteStudent()
 
-  const filteredStudents = students.filter((student) => {
+  const hydratedStudents: Student[] = useMemo(
+    () =>
+      students.map((student) => ({
+        ...student,
+        class: student.class ?? "",
+        attendance: student.attendance ?? { present: 0, total: 0 },
+        grades: student.grades ?? [],
+        admissionDate: student.admissionDate ?? null,
+        dateOfBirth: student.dateOfBirth ?? null,
+        photoUrl: student.photoUrl ?? null,
+        subjects: student.subjects ?? [],
+      })),
+    [students],
+  )
+
+  const filteredStudents = hydratedStudents.filter((student) => {
     const matchesSearch =
       student.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       student.admissionNumber.toLowerCase().includes(searchTerm.toLowerCase())
@@ -748,19 +764,23 @@ function EditStudentForm({
               <Input
                 id="edit-dob"
                 type="date"
-                value={formData.dateOfBirth}
-                onChange={(e) => updateFormData("dateOfBirth", e.target.value)}
+                value={formData.dateOfBirth ?? ""}
+                onChange={(e) => updateFormData("dateOfBirth", e.target.value || null)}
                 className="border-[#2d682d]/20 focus:border-[#b29032]"
                 required
               />
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-blood">Blood Group</Label>
-              <Select value={formData.bloodGroup} onValueChange={(value) => updateFormData("bloodGroup", value)}>
+              <Select
+                value={formData.bloodGroup ?? ""}
+                onValueChange={(value) => updateFormData("bloodGroup", value || null)}
+              >
                 <SelectTrigger className="border-[#2d682d]/20 focus:border-[#b29032]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="">Select blood group</SelectItem>
                   <SelectItem value="A+">A+</SelectItem>
                   <SelectItem value="A-">A-</SelectItem>
                   <SelectItem value="B+">B+</SelectItem>
@@ -776,8 +796,8 @@ function EditStudentForm({
               <Label htmlFor="edit-phone">Phone</Label>
               <Input
                 id="edit-phone"
-                value={formData.phone}
-                onChange={(e) => updateFormData("phone", e.target.value)}
+                value={formData.phone ?? ""}
+                onChange={(e) => updateFormData("phone", e.target.value || null)}
                 className="border-[#2d682d]/20 focus:border-[#b29032]"
               />
             </div>
@@ -786,8 +806,8 @@ function EditStudentForm({
             <Label htmlFor="edit-address">Address</Label>
             <Input
               id="edit-address"
-              value={formData.address}
-              onChange={(e) => updateFormData("address", e.target.value)}
+              value={formData.address ?? ""}
+              onChange={(e) => updateFormData("address", e.target.value || null)}
               className="border-[#2d682d]/20 focus:border-[#b29032]"
             />
           </div>
@@ -841,11 +861,15 @@ function EditStudentForm({
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-section">Section</Label>
-              <Select value={formData.section} onValueChange={(value) => updateFormData("section", value)}>
+              <Select
+                value={formData.section ?? ""}
+                onValueChange={(value) => updateFormData("section", value || null)}
+              >
                 <SelectTrigger className="border-[#2d682d]/20 focus:border-[#b29032]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="">Select section</SelectItem>
                   <SelectItem value="A">Section A</SelectItem>
                   <SelectItem value="B">Section B</SelectItem>
                   <SelectItem value="C">Section C</SelectItem>
@@ -857,8 +881,8 @@ function EditStudentForm({
               <Input
                 id="edit-admission-date"
                 type="date"
-                value={formData.admissionDate}
-                onChange={(e) => updateFormData("admissionDate", e.target.value)}
+                value={formData.admissionDate ?? ""}
+                onChange={(e) => updateFormData("admissionDate", e.target.value || null)}
                 className="border-[#2d682d]/20 focus:border-[#b29032]"
               />
             </div>
@@ -871,8 +895,8 @@ function EditStudentForm({
               <Label htmlFor="edit-parent-name">Parent Name</Label>
               <Input
                 id="edit-parent-name"
-                value={formData.parentName}
-                onChange={(e) => updateFormData("parentName", e.target.value)}
+                value={formData.parentName ?? ""}
+                onChange={(e) => updateFormData("parentName", e.target.value || null)}
                 className="border-[#2d682d]/20 focus:border-[#b29032]"
                 required
               />
@@ -882,8 +906,8 @@ function EditStudentForm({
               <Input
                 id="edit-parent-email"
                 type="email"
-                value={formData.parentEmail}
-                onChange={(e) => updateFormData("parentEmail", e.target.value)}
+                value={formData.parentEmail ?? ""}
+                onChange={(e) => updateFormData("parentEmail", e.target.value || null)}
                 className="border-[#2d682d]/20 focus:border-[#b29032]"
                 required
               />
@@ -892,8 +916,8 @@ function EditStudentForm({
               <Label htmlFor="edit-guardian-phone">Guardian Phone</Label>
               <Input
                 id="edit-guardian-phone"
-                value={formData.guardianPhone}
-                onChange={(e) => updateFormData("guardianPhone", e.target.value)}
+                value={formData.guardianPhone ?? ""}
+                onChange={(e) => updateFormData("guardianPhone", e.target.value || null)}
                 className="border-[#2d682d]/20 focus:border-[#b29032]"
               />
             </div>

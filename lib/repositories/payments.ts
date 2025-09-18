@@ -2,6 +2,7 @@ import type { PaymentStatus, Prisma } from "@prisma/client"
 import { PaymentStatus as PaymentStatusEnum, Prisma as PrismaNamespace } from "@prisma/client"
 
 import { prisma } from "../prisma"
+import { toJsonOptional, toJsonRequired } from "./utils"
 
 export type CreatePaymentInput = {
   studentId: string
@@ -12,14 +13,14 @@ export type CreatePaymentInput = {
   term: string
   description?: string | null
   paidAt?: string | Date | null
-  metadata?: Prisma.JsonValue
+  metadata?: unknown
 }
 
 export type CreateReceiptInput = {
   paymentId: string
   issuedTo: string
   amount: number | string
-  items: Prisma.JsonValue
+  items: unknown
   issuedAt?: string | Date
 }
 
@@ -27,7 +28,22 @@ function decimalToNumber(value: PrismaNamespace.Decimal | null | undefined) {
   return value ? Number(value.toString()) : null
 }
 
-export async function listPayments() {
+type PaymentWithRelations = Prisma.PaymentGetPayload<{
+  include: { student: true; receipts: true }
+}>
+
+type ReceiptWithPayment = Prisma.ReceiptGetPayload<{
+  include: { payment: { include: { student: true } } }
+}>
+
+export type NormalisedPayment = Omit<PaymentWithRelations, "amount" | "receipts"> & {
+  amount: number
+  receipts: Array<Omit<PaymentWithRelations["receipts"][number], "amount"> & { amount: number }>
+}
+
+export type NormalisedReceipt = Omit<ReceiptWithPayment, "amount"> & { amount: number }
+
+export async function listPayments(): Promise<NormalisedPayment[]> {
   const payments = await prisma.payment.findMany({
     include: { student: true, receipts: true },
     orderBy: { createdAt: "desc" },
@@ -43,7 +59,7 @@ export async function listPayments() {
   }))
 }
 
-export async function createPayment(data: CreatePaymentInput) {
+export async function createPayment(data: CreatePaymentInput): Promise<NormalisedPayment> {
   const payment = await prisma.payment.create({
     data: {
       student: { connect: { id: data.studentId } },
@@ -54,7 +70,7 @@ export async function createPayment(data: CreatePaymentInput) {
       term: data.term,
       description: data.description ?? undefined,
       paidAt: data.paidAt ? new Date(data.paidAt) : undefined,
-      metadata: data.metadata ?? undefined,
+      metadata: toJsonOptional(data.metadata),
     },
     include: { student: true, receipts: true },
   })
@@ -62,10 +78,14 @@ export async function createPayment(data: CreatePaymentInput) {
   return {
     ...payment,
     amount: decimalToNumber(payment.amount) ?? 0,
+    receipts: payment.receipts.map((receipt) => ({
+      ...receipt,
+      amount: decimalToNumber(receipt.amount) ?? 0,
+    })),
   }
 }
 
-export async function listReceipts() {
+export async function listReceipts(): Promise<NormalisedReceipt[]> {
   const receipts = await prisma.receipt.findMany({
     include: { payment: { include: { student: true } } },
     orderBy: { issuedAt: "desc" },
@@ -77,13 +97,13 @@ export async function listReceipts() {
   }))
 }
 
-export async function createReceipt(data: CreateReceiptInput) {
-  const receipt = await prisma.receipt.create({
+export async function createReceipt(data: CreateReceiptInput): Promise<NormalisedReceipt> {
+  const receipt: ReceiptWithPayment = await prisma.receipt.create({
     data: {
       payment: { connect: { id: data.paymentId } },
       issuedTo: data.issuedTo,
       amount: new PrismaNamespace.Decimal(data.amount),
-      items: data.items,
+      items: toJsonRequired(data.items),
       issuedAt: data.issuedAt ? new Date(data.issuedAt) : undefined,
     },
     include: { payment: { include: { student: true } } },
