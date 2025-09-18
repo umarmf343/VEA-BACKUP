@@ -91,6 +91,13 @@ interface RefreshTokenPayload {
   type: "refresh"
 }
 
+interface RefreshTokenMeta {
+  userId: string
+  expiresAt: number
+  rotated: boolean
+  replacedBy?: string
+}
+
 const ROLE_LABELS: Record<UserRole, RoleLabel> = {
   super_admin: "Super Admin",
   admin: "Admin",
@@ -161,6 +168,8 @@ function sanitizeEmail(email: string): string {
 }
 
 class AuthService {
+  private refreshTokenStore = new Map<string, RefreshTokenMeta>()
+
   private normalizeRole(role: string): UserRole {
     const normalized = role.trim().toLowerCase().replace(/\s+/g, "_") as UserRole
     if (normalized in ROLE_LABELS) {
@@ -196,29 +205,77 @@ class AuthService {
     }
   }
 
-  private createTokenPair(user: AuthenticatedUser): TokenPair {
-    const tokenId = randomUUID()
+  private purgeStaleRefreshTokens() {
+    const now = Date.now()
+    for (const [tokenId, meta] of this.refreshTokenStore.entries()) {
+      if (meta.expiresAt <= now) {
+        this.refreshTokenStore.delete(tokenId)
+      }
+    }
+  }
+
+  private persistRefreshToken(
+    user: AuthenticatedUser,
+    refreshJti: string,
+    expiresAt: number,
+    rotateFrom?: string,
+  ) {
+    this.refreshTokenStore.set(refreshJti, {
+      userId: user.id,
+      expiresAt,
+      rotated: false,
+    })
+
+    if (rotateFrom) {
+      const previous = this.refreshTokenStore.get(rotateFrom)
+      if (previous) {
+        this.refreshTokenStore.set(rotateFrom, {
+          ...previous,
+          rotated: true,
+          replacedBy: refreshJti,
+        })
+      }
+    }
+  }
+
+  private revokeUserRefreshTokens(userId: string) {
+    for (const [tokenId, meta] of this.refreshTokenStore.entries()) {
+      if (meta.userId === userId) {
+        this.refreshTokenStore.delete(tokenId)
+      }
+    }
+  }
+
+  private createTokenPair(user: AuthenticatedUser, rotateFrom?: string): TokenPair {
+    this.purgeStaleRefreshTokens()
+
+    const accessTokenId = randomUUID()
+    const refreshTokenId = randomUUID()
     const accessPayload: AccessTokenPayload = {
       sub: user.id,
       email: user.email,
       name: user.name,
       role: user.role,
       roleLabel: user.roleLabel,
-      jti: tokenId,
+      jti: accessTokenId,
       type: "access",
     }
 
     const refreshPayload: RefreshTokenPayload = {
       sub: user.id,
       role: user.role,
-      jti: tokenId,
+      jti: refreshTokenId,
       type: "refresh",
     }
 
-    const accessToken = jwt.sign(accessPayload, ACCESS_TOKEN_SECRET(), { expiresIn: Math.floor(ACCESS_TOKEN_TTL_MS / 1000) })
+    const accessToken = jwt.sign(accessPayload, ACCESS_TOKEN_SECRET(), {
+      expiresIn: Math.floor(ACCESS_TOKEN_TTL_MS / 1000),
+    })
     const refreshToken = jwt.sign(refreshPayload, REFRESH_TOKEN_SECRET(), {
       expiresIn: Math.floor(REFRESH_TOKEN_TTL_MS / 1000),
     })
+
+    this.persistRefreshToken(user, refreshTokenId, Date.now() + REFRESH_TOKEN_TTL_MS, rotateFrom)
 
     return {
       accessToken,
@@ -229,9 +286,7 @@ class AuthService {
   }
 
   private async findUserByEmail(email: string): Promise<UserRecord | null> {
-    const normalized = sanitizeEmail(email)
-    const users = await dbManager.getAllUsers()
-    return users.find((user) => sanitizeEmail(user.email) === normalized) ?? null
+    return dbManager.getUserByEmail(email)
   }
 
   private async findUserById(userId: string): Promise<UserRecord | null> {
@@ -288,6 +343,8 @@ class AuthService {
   }
 
   async login(email: string, password: string): Promise<LoginResult> {
+    this.purgeStaleRefreshTokens()
+
     const userRecord = await this.findUserByEmail(email)
     if (!userRecord || userRecord.status !== "active") {
       throw new AuthError("Invalid credentials", 401)
@@ -303,6 +360,8 @@ class AuthService {
       await this.setUserPassword(userRecord.id, password)
     }
 
+    this.revokeUserRefreshTokens(userRecord.id)
+
     const updatedRecord = await dbManager.updateUser(userRecord.id, { lastLogin: new Date().toISOString() })
     const user = this.buildUser(updatedRecord)
     const tokens = this.createTokenPair(user)
@@ -311,6 +370,8 @@ class AuthService {
   }
 
   async refreshSession(refreshToken: string): Promise<RefreshResult> {
+    this.purgeStaleRefreshTokens()
+
     let payload: RefreshTokenPayload
     try {
       payload = jwt.verify(refreshToken, REFRESH_TOKEN_SECRET()) as RefreshTokenPayload
@@ -318,8 +379,23 @@ class AuthService {
       throw new AuthError("Invalid refresh token", 401)
     }
 
-    if (payload.type !== "refresh" || !payload.sub) {
+    if (payload.type !== "refresh" || !payload.sub || typeof payload.jti !== "string") {
       throw new AuthError("Invalid refresh token", 401)
+    }
+
+    const stored = this.refreshTokenStore.get(payload.jti)
+    if (!stored || stored.userId !== payload.sub) {
+      throw new AuthError("Invalid refresh token", 401)
+    }
+
+    if (stored.rotated) {
+      this.revokeUserRefreshTokens(payload.sub)
+      throw new AuthError("Refresh token has been revoked", 401)
+    }
+
+    if (stored.expiresAt <= Date.now()) {
+      this.refreshTokenStore.delete(payload.jti)
+      throw new AuthError("Refresh token has expired", 401)
     }
 
     const userRecord = await this.findUserById(payload.sub)
@@ -328,7 +404,7 @@ class AuthService {
     }
 
     const user = this.buildUser(userRecord)
-    const tokens = this.createTokenPair(user)
+    const tokens = this.createTokenPair(user, payload.jti)
 
     return { user, tokens }
   }
@@ -341,7 +417,15 @@ class AuthService {
       throw new AuthError("Unauthorized", 401)
     }
 
-    if (payload.type !== "access" || !payload.sub) {
+    if (
+      payload.type !== "access" ||
+      typeof payload.sub !== "string" ||
+      typeof payload.name !== "string" ||
+      payload.name.trim().length === 0 ||
+      typeof payload.role !== "string" ||
+      typeof payload.roleLabel !== "string" ||
+      typeof payload.jti !== "string"
+    ) {
       throw new AuthError("Unauthorized", 401)
     }
 

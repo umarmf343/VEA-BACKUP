@@ -1,5 +1,7 @@
 import { beforeAll, describe, expect, it } from "@jest/globals"
 
+import jwt from "jsonwebtoken"
+
 import { AuthError, authService } from "../lib/auth-service"
 import { dbManager } from "../lib/database-manager"
 
@@ -50,6 +52,43 @@ describe("Auth service", () => {
     expect(refreshed.user.id).toBe(initial.user.id)
     expect(refreshed.tokens.accessToken).not.toBe(initial.tokens.accessToken)
     expect(refreshed.tokens.refreshToken).not.toBe(initial.tokens.refreshToken)
+  })
+
+  it("rejects reused refresh tokens after rotation", async () => {
+    const loginResult = await authService.login(testEmail, testPassword)
+    await authService.refreshSession(loginResult.tokens.refreshToken)
+
+    await expect(authService.refreshSession(loginResult.tokens.refreshToken)).rejects.toBeInstanceOf(
+      AuthError,
+    )
+  })
+
+  it("revokes previously issued refresh tokens when logging in again", async () => {
+    const firstLogin = await authService.login(testEmail, testPassword)
+    const secondLogin = await authService.login(testEmail, testPassword)
+
+    expect(firstLogin.tokens.refreshToken).not.toBe(secondLogin.tokens.refreshToken)
+
+    await expect(authService.refreshSession(firstLogin.tokens.refreshToken)).rejects.toBeInstanceOf(
+      AuthError,
+    )
+  })
+
+  it("throws when verifying an access token missing required claims", () => {
+    const token = jwt.sign(
+      {
+        sub: "test-user",
+        type: "access",
+        role: "teacher",
+        roleLabel: "Teacher",
+        jti: "test-jti",
+        // intentionally omit name claim
+      },
+      process.env.JWT_SECRET ?? "development-access-secret",
+      { expiresIn: 60 },
+    )
+
+    expect(() => authService.verifyAccessToken(token)).toThrow(AuthError)
   })
 
   it("evaluates permissions based on role hierarchy", () => {

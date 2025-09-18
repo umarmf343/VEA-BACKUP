@@ -3,6 +3,25 @@ import crypto from "crypto"
 
 import { authService } from "./auth-service"
 
+function tryDecodeBase64(value: string): string | null {
+  try {
+    const buffer = Buffer.from(value, "base64")
+    if (buffer.byteLength === 0) {
+      return null
+    }
+
+    const normalizedInput = value.replace(/=+$/, "")
+    const normalizedOutput = buffer.toString("base64").replace(/=+$/, "")
+    if (normalizedInput !== normalizedOutput) {
+      return null
+    }
+
+    return buffer.toString("utf8")
+  } catch {
+    return null
+  }
+}
+
 // Password hashing utilities
 // Rate limiting configuration
 export const createRateLimit = (windowMs: number, max: number) => {
@@ -55,28 +74,40 @@ export const encryptSensitiveData = (data: string): string => {
 }
 
 export const decryptSensitiveData = (encryptedData: string): string => {
+  const input = (encryptedData ?? "").trim()
+  if (!input) {
+    throw new Error("Invalid encrypted data format")
+  }
+
   const isNodeEnv = typeof process !== "undefined" && !!process.versions?.node
+  const decodedLegacy = tryDecodeBase64(input)
+  const hasCipherSegments = input.includes(":")
+
+  if (!hasCipherSegments) {
+    if (decodedLegacy !== null) {
+      return decodedLegacy
+    }
+    throw new Error("Invalid encrypted data format")
+  }
 
   if (typeof window !== "undefined" && !isNodeEnv) {
-    if (!encryptedData.includes(":")) {
-      throw new Error("Invalid encrypted data format")
+    if (decodedLegacy !== null) {
+      return decodedLegacy
     }
+    throw new Error("Invalid encrypted data format")
+  }
 
-    try {
-      return Buffer.from(encryptedData, "base64").toString("utf-8")
-    } catch {
-      throw new Error("Invalid encrypted data format")
+  const [ivHex, authTagHex, encryptedHex] = input.split(":")
+  if (!ivHex || !authTagHex || !encryptedHex) {
+    if (decodedLegacy !== null) {
+      return decodedLegacy
     }
+    throw new Error("Invalid encrypted data format")
   }
 
   const algorithm = "aes-256-gcm"
   const key = process.env.ENCRYPTION_KEY || "default-key-change-in-production"
   const keyBuffer = crypto.scryptSync(key, "salt", 32)
-
-  const [ivHex, authTagHex, encryptedHex] = encryptedData.split(":")
-  if (!ivHex || !authTagHex || !encryptedHex) {
-    throw new Error("Invalid encrypted data format")
-  }
 
   const iv = Buffer.from(ivHex, "hex")
   const authTag = Buffer.from(authTagHex, "hex")

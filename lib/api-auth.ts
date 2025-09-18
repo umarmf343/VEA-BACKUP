@@ -31,6 +31,10 @@ export function requireAuth(request: NextRequest): AuthContext {
   try {
     const decoded = authService.verifyAccessToken(token)
 
+    if (typeof decoded.name !== "string" || decoded.name.trim().length === 0) {
+      throw new AuthError("Token is missing required claims", 401)
+    }
+
     return {
       userId: decoded.sub,
       role: decoded.role,
@@ -40,6 +44,6 @@ export function requireAuth(request: NextRequest): AuthContext {
     if (error instanceof AuthError) {
       throw { status: error.status, message: error.message }
     }
-    throw { status: 401, message: "Unauthorized" }
+    throw { status: 500, message: "Failed to verify access token" }
   }
 }

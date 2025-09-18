@@ -2,6 +2,12 @@ import { randomUUID } from "crypto"
 
 import { safeStorage } from "./safe-storage"
 
+const USER_CACHE_TTL_MS = 5 * 60 * 1000
+
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase()
+}
+
 export type PaymentStatus = "pending" | "paid" | "failed"
 export type StudentPaymentStatus = "paid" | "pending" | "overdue"
 export type StudentStatus = "active" | "inactive"
@@ -754,6 +760,8 @@ export class DatabaseManager {
   private memoryStore = new Map<CollectionKey, string>()
   private collectionListeners = new Map<CollectionKey, Set<(value: Collections[CollectionKey]) => void>>()
   private eventListeners = new Map<EventName, Set<(payload: unknown) => void>>()
+  private userEmailIndex = new Map<string, string>()
+  private userCache = new Map<string, { record: UserRecord; expiresAt: number }>()
 
   constructor() {
     if (DatabaseManager.instance) {
@@ -766,6 +774,59 @@ export class DatabaseManager {
 
   static getInstance(): DatabaseManager {
     return new DatabaseManager()
+  }
+
+  private cacheUserRecord(user: UserRecord) {
+    const normalizedEmail = normalizeEmail(user.email)
+    if (normalizedEmail) {
+      this.userEmailIndex.set(normalizedEmail, user.id)
+    }
+
+    this.userCache.set(user.id, {
+      record: clone(user),
+      expiresAt: Date.now() + USER_CACHE_TTL_MS,
+    })
+  }
+
+  private refreshUserIndexes(users: UserRecord[]) {
+    this.userEmailIndex.clear()
+    this.userCache.clear()
+
+    const now = Date.now()
+    users.forEach((user) => {
+      const normalizedEmail = normalizeEmail(user.email)
+      if (normalizedEmail) {
+        this.userEmailIndex.set(normalizedEmail, user.id)
+      }
+
+      this.userCache.set(user.id, {
+        record: clone(user),
+        expiresAt: now + USER_CACHE_TTL_MS,
+      })
+    })
+  }
+
+  private purgeExpiredUserCache() {
+    const now = Date.now()
+    for (const [userId, entry] of this.userCache.entries()) {
+      if (entry.expiresAt <= now) {
+        this.userCache.delete(userId)
+      }
+    }
+  }
+
+  private getCachedUserRecord(userId: string): UserRecord | null {
+    const entry = this.userCache.get(userId)
+    if (!entry) {
+      return null
+    }
+
+    if (entry.expiresAt <= Date.now()) {
+      this.userCache.delete(userId)
+      return null
+    }
+
+    return clone(entry.record)
   }
 
   private bootstrapDefaults() {
@@ -783,6 +844,11 @@ export class DatabaseManager {
         // Ignore storage errors (e.g., during SSR)
       }
     })
+
+    const users = this.getCollection("users")
+    if (Array.isArray(users)) {
+      this.refreshUserIndexes(users)
+    }
   }
 
   private storageKey(key: CollectionKey) {
@@ -831,6 +897,9 @@ export class DatabaseManager {
 
   private setCollection<K extends CollectionKey>(key: K, value: Collections[K]) {
     this.writeRaw(key, JSON.stringify(value))
+    if (key === "users") {
+      this.refreshUserIndexes(value as UserRecord[])
+    }
     this.notifyCollection(key)
   }
 
@@ -1527,8 +1596,48 @@ export class DatabaseManager {
     return finalGrade
   }
 
+  async getUserByEmail(email: string) {
+    const normalized = normalizeEmail(email)
+    if (!normalized) {
+      return null
+    }
+
+    this.purgeExpiredUserCache()
+
+    const indexedId = this.userEmailIndex.get(normalized)
+    if (indexedId) {
+      const cached = this.getCachedUserRecord(indexedId)
+      if (cached) {
+        return cached
+      }
+    }
+
+    const users = this.getCollection("users")
+    const match = users.find((user) => normalizeEmail(user.email) === normalized) ?? null
+    if (match) {
+      this.cacheUserRecord(match)
+      return clone(match)
+    }
+
+    return null
+  }
+
   async getUser(userId: string) {
-    return clone(this.getCollection("users").find((user) => user.id === userId) ?? null)
+    this.purgeExpiredUserCache()
+
+    const cached = this.getCachedUserRecord(userId)
+    if (cached) {
+      return cached
+    }
+
+    const users = this.getCollection("users")
+    const match = users.find((user) => user.id === userId) ?? null
+    if (match) {
+      this.cacheUserRecord(match)
+      return clone(match)
+    }
+
+    return null
   }
 
   async getUsersByRole(role: string) {

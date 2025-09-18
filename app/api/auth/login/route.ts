@@ -1,6 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
+
 import { AuthError, authService } from "@/lib/auth-service"
 import { sanitizeInput } from "@/lib/security"
+
+export const runtime = "nodejs"
 
 export async function POST(request: NextRequest) {
   try {
