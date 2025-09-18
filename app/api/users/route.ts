@@ -2,6 +2,11 @@ export const runtime = "nodejs"
 
 import { type NextRequest, NextResponse } from "next/server"
 import { DatabaseManager } from "@/lib/database-manager"
+import {
+  formatZodErrors,
+  userCreateSchema,
+  userUpdateSchema,
+} from "@/lib/validation-schemas"
 
 const dbManager = new DatabaseManager()
 
@@ -31,17 +36,21 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    const { name, email, role, password, ...additionalData } = body
+    const body = await request.json().catch(() => null)
+    const validation = userCreateSchema.safeParse(body)
 
-    const userData = {
-      name,
-      email,
-      role,
-      status: "active",
-      createdAt: new Date().toISOString(),
-      ...additionalData,
+    if (!validation.success) {
+      return NextResponse.json(
+        {
+          error: "Invalid user data",
+          fieldErrors: formatZodErrors(validation.error),
+        },
+        { status: 400 },
+      )
     }
+
+    const { password: _password, status, ...rest } = validation.data
+    const userData = { ...rest, status: status ?? "active" }
 
     const newUser = await dbManager.createUser(userData)
 
@@ -57,12 +66,23 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const body = await request.json()
-    const { id, ...updateData } = body
+    const body = await request.json().catch(() => null)
+    const validation = userUpdateSchema.safeParse(body)
 
-    updateData.updatedAt = new Date().toISOString()
+    if (!validation.success) {
+      return NextResponse.json(
+        {
+          error: "Invalid user update data",
+          fieldErrors: formatZodErrors(validation.error),
+        },
+        { status: 400 },
+      )
+    }
 
-    const updatedUser = await dbManager.updateUser(id, updateData)
+    const { id, ...updates } = validation.data
+    const updatePayload = { ...updates, updatedAt: new Date().toISOString() }
+
+    const updatedUser = await dbManager.updateUser(id, updatePayload)
 
     return NextResponse.json({
       user: updatedUser,

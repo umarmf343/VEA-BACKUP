@@ -2,6 +2,7 @@ export const runtime = "nodejs"
 
 import { type NextRequest, NextResponse } from "next/server"
 import { dbManager } from "@/lib/database-manager"
+import { classCreateSchema, classUpdateSchema, formatZodErrors } from "@/lib/validation-schemas"
 
 export async function GET() {
   try {
@@ -15,16 +16,26 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    const { name, level, capacity, classTeacherId, subjects } = body
+    const body = await request.json().catch(() => null)
+    const validation = classCreateSchema.safeParse(body)
+
+    if (!validation.success) {
+      return NextResponse.json(
+        {
+          error: "Invalid class data",
+          fieldErrors: formatZodErrors(validation.error),
+        },
+        { status: 400 },
+      )
+    }
+
+    const { status, subjects, capacity, ...classData } = validation.data
 
     const newClass = await dbManager.createClass({
-      name,
-      level,
-      capacity: capacity || 30,
-      classTeacherId,
-      subjects: subjects || [],
-      status: "active",
+      ...classData,
+      capacity: capacity ?? 30,
+      subjects: subjects ?? [],
+      status: status ?? "active",
     })
 
     return NextResponse.json({
@@ -39,10 +50,22 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const body = await request.json()
-    const { id, ...updateData } = body
+    const body = await request.json().catch(() => null)
+    const validation = classUpdateSchema.safeParse(body)
 
-    const updatedClass = await dbManager.updateClass(id, updateData)
+    if (!validation.success) {
+      return NextResponse.json(
+        {
+          error: "Invalid class update data",
+          fieldErrors: formatZodErrors(validation.error),
+        },
+        { status: 400 },
+      )
+    }
+
+    const { id, ...updates } = validation.data
+
+    const updatedClass = await dbManager.updateClass(id, updates)
 
     return NextResponse.json({
       class: updatedClass,

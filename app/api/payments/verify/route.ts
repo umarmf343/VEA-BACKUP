@@ -15,6 +15,7 @@
 // NOTE: Replace the in-memory DB with your real persistence in production.
 
 import { NextResponse } from "next/server";
+import { formatZodErrors, paymentVerifySchema } from "@/lib/validation-schemas";
 
 type Status = "pending" | "paid" | "failed";
 
@@ -35,9 +36,20 @@ function ensureDB(): Payment[] {
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json().catch(() => ({}));
-    let reference = String(body?.reference || "").trim();
-    const id = String(body?.id || "").trim();
+    const body = await req.json().catch(() => null);
+    const validation = paymentVerifySchema.safeParse(body);
+
+    if (!validation.success) {
+      return NextResponse.json(
+        {
+          error: "Invalid payment verification payload",
+          fieldErrors: formatZodErrors(validation.error),
+        },
+        { status: 400 }
+      );
+    }
+
+    let { reference, id } = validation.data;
 
     const db = ensureDB();
 

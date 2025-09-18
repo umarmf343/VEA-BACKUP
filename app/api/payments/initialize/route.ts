@@ -23,6 +23,7 @@
 // NOTE: Replace the in-memory DB with your real persistence layer in production.
 
 import { NextResponse } from "next/server";
+import { formatZodErrors, paymentInitializeSchema } from "@/lib/validation-schemas";
 
 type Status = "pending" | "paid" | "failed";
 
@@ -51,18 +52,20 @@ function uid(prefix: string) {
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json().catch(() => ({}));
-    const studentId = String(body?.studentId ?? "").trim();
-    const amount = Number(body?.amount);
-    const emailRaw = body?.email ? String(body.email).trim() : "";
-    const callbackUrlRaw = body?.callbackUrl ? String(body.callbackUrl).trim() : "";
+    const body = await req.json().catch(() => null);
+    const validation = paymentInitializeSchema.safeParse(body);
 
-    if (!studentId || !Number.isFinite(amount) || amount < 100) {
+    if (!validation.success) {
       return NextResponse.json(
-        { message: "Invalid payload. Provide { studentId, amount>=100 }." },
+        {
+          error: "Invalid payment initialization payload",
+          fieldErrors: formatZodErrors(validation.error),
+        },
         { status: 400 }
       );
     }
+
+    const { studentId, amount, email, callbackUrl } = validation.data;
 
     // Create or ensure DB record first (pending)
     const db = ensureDB();
@@ -83,9 +86,9 @@ export async function POST(req: Request) {
     const NEXT_PUBLIC_APP_URL = process.env.NEXT_PUBLIC_APP_URL || "";
 
     // Fallbacks for missing optional fields
-    const email = emailRaw || `${studentId}@vea.local`;
+    const normalizedEmail = email || `${studentId}@vea.local`;
     const callback_url =
-      callbackUrlRaw ||
+      callbackUrl ||
       (NEXT_PUBLIC_APP_URL ? `${NEXT_PUBLIC_APP_URL.replace(/\/$/, "")}/payments/callback` : undefined);
 
     // If no secret key, return MOCK (dev)
@@ -96,7 +99,7 @@ export async function POST(req: Request) {
 
     // Real Paystack initialize
     const initPayload: Record<string, any> = {
-      email,
+      email: normalizedEmail,
       amount: payment.amount * 100, // kobo
       reference,
       metadata: {
