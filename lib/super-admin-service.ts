@@ -9,6 +9,28 @@ export type NotificationKind = "info" | "success" | "warning" | "error";
 export type ActivityType = "user" | "report" | "payment" | "assignment" | "system" | "security";
 export type Audience = "super-admin" | "admin" | "teacher" | "student" | "parent" | "librarian" | "accountant";
 
+export type ServiceOperationalStatus = "operational" | "degraded" | "maintenance" | "outage";
+
+export interface ServiceStatusEntry {
+  id: string;
+  name: string;
+  status: ServiceOperationalStatus;
+  summary: string;
+  uptime: number;
+  dependencies: string[];
+  incidents: {
+    open: number;
+    total: number;
+  };
+  updatedAt: string;
+}
+
+export interface ServiceStatusSnapshot {
+  updatedAt: string;
+  overallStatus: ServiceOperationalStatus;
+  services: ServiceStatusEntry[];
+}
+
 export interface Tenant {
   id: string;
   name: string;
@@ -85,6 +107,18 @@ export interface SystemMetricsSnapshot {
   updatedAt: string;
 }
 
+interface ServiceStatusInternal {
+  id: string;
+  name: string;
+  status: ServiceOperationalStatus;
+  baselineSummary: string;
+  summary: string;
+  uptime: number;
+  dependencies: string[];
+  incidentKey: string;
+  updatedAt: string;
+}
+
 interface SuperAdminState {
   tenants: Tenant[];
   incidents: Incident[];
@@ -93,6 +127,8 @@ interface SuperAdminState {
   uptimeLog: UptimeEntry[];
   systemMetrics: SystemMetricsSnapshot;
   lastDeploymentAt: string;
+  serviceStatuses: ServiceStatusInternal[];
+  serviceStatusUpdatedAt: string;
 }
 
 export interface SuperAdminSnapshot {
@@ -425,6 +461,76 @@ function createInitialState(): SuperAdminState {
   baseMetrics.databaseStatus = computeDatabaseStatus(baseMetrics.databaseConnections);
   baseMetrics.overallStatus = computeOverallStatus(baseMetrics);
 
+  const statusTimestamp = new Date().toISOString();
+  const serviceStatuses: ServiceStatusInternal[] = [
+    {
+      id: "database",
+      name: "Database Cluster",
+      status: "operational",
+      baselineSummary: "Primary and read replicas are healthy across availability zones.",
+      summary: "Primary and read replicas are healthy across availability zones.",
+      uptime: 99.98,
+      dependencies: ["PostgreSQL (multi-AZ)", "Redis Cache"],
+      incidentKey: "Database",
+      updatedAt: statusTimestamp,
+    },
+    {
+      id: "payments",
+      name: "Payment Processing",
+      status: "operational",
+      baselineSummary: "Paystack and Flutterwave webhooks are synchronised.",
+      summary: "Paystack and Flutterwave webhooks are synchronised.",
+      uptime: 99.67,
+      dependencies: ["Paystack", "Flutterwave"],
+      incidentKey: "Payments",
+      updatedAt: statusTimestamp,
+    },
+    {
+      id: "authentication",
+      name: "Authentication Services",
+      status: "degraded",
+      baselineSummary: "Centrally managed identity provider with MFA enforcement.",
+      summary: "Centrally managed identity provider with MFA enforcement.",
+      uptime: 99.42,
+      dependencies: ["Keycloak", "SMS OTP Gateway"],
+      incidentKey: "Authentication",
+      updatedAt: statusTimestamp,
+    },
+    {
+      id: "reports",
+      name: "Report Generation",
+      status: "operational",
+      baselineSummary: "Scheduled exports and analytics pipelines operating normally.",
+      summary: "Scheduled exports and analytics pipelines operating normally.",
+      uptime: 99.71,
+      dependencies: ["Analytics Workers", "S3 Storage"],
+      incidentKey: "Reports",
+      updatedAt: statusTimestamp,
+    },
+    {
+      id: "library",
+      name: "Digital Library",
+      status: "maintenance",
+      baselineSummary: "Catalog indexing nodes are healthy.",
+      summary: "Catalog indexing nodes are healthy.",
+      uptime: 99.58,
+      dependencies: ["Elasticsearch", "S3 Storage"],
+      incidentKey: "Library",
+      updatedAt: statusTimestamp,
+    },
+    {
+      id: "messaging",
+      name: "Messaging & Alerts",
+      status: "operational",
+      baselineSummary: "Push notifications, SMS and email brokers connected.",
+      summary: "Push notifications, SMS and email brokers connected.",
+      uptime: 99.87,
+      dependencies: ["FCM", "Twilio", "SendGrid"],
+      incidentKey: "Messaging",
+      updatedAt: statusTimestamp,
+    },
+  ];
+
   return {
     tenants,
     incidents,
@@ -433,6 +539,8 @@ function createInitialState(): SuperAdminState {
     uptimeLog,
     systemMetrics: baseMetrics,
     lastDeploymentAt: new Date(Date.now() - 1000 * 60 * 60 * 20).toISOString(),
+    serviceStatuses,
+    serviceStatusUpdatedAt: statusTimestamp,
   };
 }
 
@@ -620,4 +728,151 @@ export function appendActivity(activity: Omit<Activity, "id" | "timestamp"> & { 
 
   state.activities = sortByTimestampDesc([entry, ...state.activities]);
   return clone(entry);
+}
+
+function determineStatusFromIncidents(incidents: Incident[]): ServiceOperationalStatus | null {
+  if (incidents.length === 0) {
+    return null;
+  }
+
+  if (incidents.some((incident) => incident.severity === "critical")) {
+    return "outage";
+  }
+
+  if (incidents.some((incident) => incident.severity === "high")) {
+    return "degraded";
+  }
+
+  if (incidents.some((incident) => incident.severity === "medium")) {
+    return "maintenance";
+  }
+
+  return "maintenance";
+}
+
+function computeOverallOperationalStatusFromServices(services: ServiceStatusInternal[]): ServiceOperationalStatus {
+  const statuses = services.map((service) => service.status);
+  if (statuses.includes("outage")) {
+    return "outage";
+  }
+
+  if (statuses.includes("degraded")) {
+    return "degraded";
+  }
+
+  if (statuses.includes("maintenance")) {
+    return "maintenance";
+  }
+
+  return "operational";
+}
+
+function describeMaintenanceSummary(resolvedAt: number | null, now: number) {
+  if (!resolvedAt) {
+    return "Scheduled maintenance is in progress.";
+  }
+
+  const minutesAgo = Math.max(1, Math.round((now - resolvedAt) / 60_000));
+  if (minutesAgo < 60) {
+    return `Post-incident validation running (${minutesAgo} min ago).`;
+  }
+
+  const hoursAgo = Math.round(minutesAgo / 60);
+  return `Stabilising after incident resolved ${hoursAgo} hr${hoursAgo === 1 ? "" : "s"} ago.`;
+}
+
+function refreshServiceStatus(
+  service: ServiceStatusInternal,
+  incidents: Incident[],
+  timestamp: string,
+): ServiceStatusInternal {
+  const openIncidents = incidents.filter((incident) => !incident.resolvedAt);
+  const statusFromIncidents = determineStatusFromIncidents(openIncidents);
+  let status: ServiceOperationalStatus = statusFromIncidents ?? "operational";
+  let summary = service.baselineSummary;
+
+  if (openIncidents.length > 0) {
+    const head = openIncidents[0];
+    const severityLabel = head.severity.charAt(0).toUpperCase() + head.severity.slice(1);
+    summary = `${severityLabel} incident: ${head.message}`;
+  } else {
+    const resolvedIncidents = incidents
+      .filter((incident) => incident.resolvedAt)
+      .sort((a, b) => new Date(b.resolvedAt!).getTime() - new Date(a.resolvedAt!).getTime());
+
+    const latestResolved = resolvedIncidents[0];
+    if (latestResolved) {
+      const resolvedAt = new Date(latestResolved.resolvedAt!).getTime();
+      const now = new Date(timestamp).getTime();
+      if (now - resolvedAt < 3 * 60 * 60 * 1000 && status !== "outage") {
+        status = "maintenance";
+        summary = describeMaintenanceSummary(resolvedAt, now);
+      }
+    }
+
+    if (status === "operational" && Math.random() > 0.94) {
+      status = "maintenance";
+      summary = "Automated optimisation checks running on background nodes.";
+    }
+  }
+
+  let uptime = adjustMetric(service.uptime, 0.05, 97.2, 99.99, 2);
+  if (status === "outage") {
+    uptime = Math.max(95.2, uptime - Math.random() * 0.9);
+  } else if (status === "degraded") {
+    uptime = Math.max(96.5, uptime - Math.random() * 0.4);
+  }
+
+  return {
+    ...service,
+    status,
+    summary,
+    uptime,
+    updatedAt: timestamp,
+  };
+}
+
+export function getServiceStatusSnapshot(options: { refresh?: boolean } = {}): ServiceStatusSnapshot {
+  const state = getState();
+  const now = Date.now();
+  const shouldRefresh = options.refresh || now - new Date(state.serviceStatusUpdatedAt).getTime() > 45_000;
+
+  if (shouldRefresh) {
+    const timestamp = new Date().toISOString();
+    state.serviceStatuses = state.serviceStatuses.map((service) => {
+      const incidents = state.incidents.filter(
+        (incident) => incident.service.toLowerCase() === service.incidentKey.toLowerCase(),
+      );
+      return refreshServiceStatus(service, incidents, timestamp);
+    });
+    state.serviceStatusUpdatedAt = timestamp;
+  }
+
+  const services: ServiceStatusEntry[] = state.serviceStatuses.map((service) => {
+    const incidents = state.incidents.filter(
+      (incident) => incident.service.toLowerCase() === service.incidentKey.toLowerCase(),
+    );
+    const open = incidents.filter((incident) => !incident.resolvedAt).length;
+    return {
+      id: service.id,
+      name: service.name,
+      status: service.status,
+      summary: service.summary,
+      uptime: Number(service.uptime.toFixed(2)),
+      dependencies: [...service.dependencies],
+      incidents: {
+        open,
+        total: incidents.length,
+      },
+      updatedAt: service.updatedAt,
+    };
+  });
+
+  const snapshot: ServiceStatusSnapshot = {
+    updatedAt: state.serviceStatusUpdatedAt,
+    overallStatus: computeOverallOperationalStatusFromServices(state.serviceStatuses),
+    services,
+  };
+
+  return clone(snapshot);
 }
