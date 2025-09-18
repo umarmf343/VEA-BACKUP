@@ -1,7 +1,7 @@
 export const runtime = "nodejs"
 
 import { type NextRequest, NextResponse } from "next/server"
-import { DatabaseManager } from "@/lib/database-manager"
+import { DatabaseManager, type UserRecord } from "@/lib/database-manager"
 
 const dbManager = new DatabaseManager()
 
@@ -55,14 +55,18 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function PUT(request: NextRequest) {
+export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json()
-    const { id, ...updateData } = body
+    const { id, updates } = body ?? {}
 
-    updateData.updatedAt = new Date().toISOString()
+    if (!id || typeof updates !== "object" || updates === null) {
+      return NextResponse.json({ error: "User id and updates are required" }, { status: 400 })
+    }
 
-    const updatedUser = await dbManager.updateUser(id, updateData)
+    const sanitizedUpdates = { ...(updates as Partial<UserRecord>) }
+
+    const updatedUser = await dbManager.updateUser(id, sanitizedUpdates)
 
     return NextResponse.json({
       user: updatedUser,
@@ -70,6 +74,8 @@ export async function PUT(request: NextRequest) {
     })
   } catch (error) {
     console.error("Failed to update user:", error)
-    return NextResponse.json({ error: "Failed to update user" }, { status: 500 })
+    const message = error instanceof Error ? error.message : "Failed to update user"
+    const status = typeof message === "string" && message.includes("not found") ? 404 : 500
+    return NextResponse.json({ error: message }, { status })
   }
 }

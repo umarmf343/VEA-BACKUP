@@ -69,6 +69,41 @@ const AVAILABLE_SUBJECTS = [
   "Economics",
 ]
 
+async function ensureOkResponse(response: Response, fallbackMessage: string) {
+  if (response.ok) {
+    return
+  }
+
+  let message = fallbackMessage
+
+  try {
+    const text = await response.text()
+    if (text) {
+      try {
+        const data = JSON.parse(text) as unknown
+        if (data && typeof data === "object" && "error" in data) {
+          const errorMessage = (data as { error?: unknown }).error
+          if (typeof errorMessage === "string" && errorMessage.trim()) {
+            message = errorMessage
+          } else {
+            message = text
+          }
+        } else if (typeof data === "string" && data.trim()) {
+          message = data
+        } else {
+          message = text
+        }
+      } catch {
+        message = text
+      }
+    }
+  } catch {
+    // Ignore body parsing errors and fall back to default message
+  }
+
+  throw new Error(message)
+}
+
 export function UserManagement() {
   const [users, setUsers] = React.useState<User[]>([])
   const [loading, setLoading] = React.useState(true)
@@ -185,9 +220,7 @@ export function UserManagement() {
           },
         }),
       })
-      if (!res.ok) {
-        throw new Error((await res.text()) || "Failed to update user")
-      }
+      await ensureOkResponse(res, "Failed to update user")
       await loadUsers(false)
       setEditingUser(null)
       setIsEditDialogOpen(false)
@@ -238,9 +271,7 @@ export function UserManagement() {
           updates: { status: user.status === "suspended" ? "active" : "suspended" },
         }),
       })
-      if (!res.ok) {
-        throw new Error((await res.text()) || "Failed to update status")
-      }
+      await ensureOkResponse(res, "Failed to update status")
       await loadUsers(false)
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to update status"
