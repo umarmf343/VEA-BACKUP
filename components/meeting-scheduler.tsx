@@ -22,6 +22,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { CalendarIcon, Clock, Users, Plus, Bell, CheckCircle, XCircle, AlertCircle } from "lucide-react"
 import { format } from "date-fns"
+import { useNotification } from "@/hooks/use-notification"
 
 interface Meeting {
   id: string
@@ -129,6 +130,7 @@ export function MeetingScheduler({ currentUser }: MeetingSchedulerProps) {
       notes: "Address recent behavioral issues and create action plan",
     },
   ])
+  const { notifyInfo, notifySuccess, notifyWarning } = useNotification()
 
   const handleScheduleMeeting = () => {
     if (!newMeetingForm.title || !newMeetingForm.teacherId || !newMeetingForm.parentId || !newMeetingForm.time) {
@@ -160,8 +162,14 @@ export function MeetingScheduler({ currentUser }: MeetingSchedulerProps) {
     setMeetings((prev) => [...prev, meeting])
 
     // Show notification popup for Super Admin about school fees payment
+    notifySuccess("Meeting scheduled", {
+      description: `${meeting.title} for ${meeting.studentName || "a student"} has been added.`,
+    })
+
     if (currentUser.role === "super_admin") {
-      alert("🔔 New Meeting Scheduled! School fees payment notification sent to admin.")
+      notifyInfo("New meeting requires attention", {
+        description: "School fees payment notification sent to admin.",
+      })
     }
 
     setNewMeetingForm({
@@ -185,7 +193,19 @@ export function MeetingScheduler({ currentUser }: MeetingSchedulerProps) {
     // Show notification popup
     const meeting = meetings.find((m) => m.id === meetingId)
     if (meeting) {
-      alert(`🔔 Meeting "${meeting.title}" status updated to ${status}`)
+      const description = `Status updated to ${status}.`
+
+      switch (status) {
+        case "cancelled":
+          notifyWarning(`Meeting "${meeting.title}" updated`, { description })
+          break
+        case "completed":
+        case "confirmed":
+          notifySuccess(`Meeting "${meeting.title}" updated`, { description })
+          break
+        default:
+          notifyInfo(`Meeting "${meeting.title}" updated`, { description })
+      }
     }
   }
 

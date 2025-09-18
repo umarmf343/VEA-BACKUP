@@ -9,6 +9,7 @@ import { Progress } from "@/components/ui/progress"
 import { AlertCircle, CheckCircle, Users, ArrowUp, Calendar, GraduationCap } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { dbManager } from "@/lib/database-manager"
+import { useNotification } from "@/hooks/use-notification"
 
 interface Student {
   id: string
@@ -41,6 +42,7 @@ export function AutomaticPromotionSystem() {
   const [showResults, setShowResults] = useState(false)
   const [classes, setClasses] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
+  const { notifyError, notifySuccess } = useNotification()
 
   useEffect(() => {
     const loadClasses = async () => {
@@ -168,7 +170,9 @@ export function AutomaticPromotionSystem() {
       })
     } catch (error) {
       console.error("Error analyzing promotions:", error)
-      alert("Error analyzing student promotions. Please try again.")
+      notifyError("Promotion analysis failed", {
+        description: "We couldn't analyze the selected class. Please try again.",
+      })
     } finally {
       setIsProcessing(false)
     }
@@ -199,13 +203,17 @@ export function AutomaticPromotionSystem() {
         performedBy: "system",
       })
 
-      alert(`Successfully promoted ${eligibleStudents.length} students to the next class!`)
+      notifySuccess("Batch promotion completed", {
+        description: `${eligibleStudents.length} student${eligibleStudents.length === 1 ? "" : "s"} promoted to the next class.`,
+      })
 
       // Refresh the analysis
       await handlePromotionAnalysis()
     } catch (error) {
       console.error("Error promoting students:", error)
-      alert("Error promoting students. Please try again.")
+      notifyError("Batch promotion failed", {
+        description: "Please try again once the issue is resolved.",
+      })
     } finally {
       setIsProcessing(false)
     }
