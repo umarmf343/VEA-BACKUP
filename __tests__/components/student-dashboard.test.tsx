@@ -30,6 +30,24 @@ describe("StudentDashboard", () => {
     expect(screen.getByText("Payments Pending").nextElementSibling).toHaveTextContent("1")
   })
 
+  it("renders provided initial metrics immediately", () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ assignmentsDue: 4, notices: 1, paymentsPending: 2, lastSync: "2025-01-01T10:00:00.000Z" }),
+    })
+
+    render(
+      <StudentDashboard
+        initialData={{ assignmentsDue: 7, notices: 4, paymentsPending: 3, lastSync: "2025-01-01T09:00:00.000Z" }}
+      />
+    )
+
+    expect(screen.getByText("Assignments Due").nextElementSibling).toHaveTextContent("7")
+    expect(screen.getByText("Notices").nextElementSibling).toHaveTextContent("4")
+    expect(screen.getByText("Payments Pending").nextElementSibling).toHaveTextContent("3")
+    expect(screen.getByText(/Last synced/i)).toBeInTheDocument()
+  })
+
   it("shows an error message when the request fails", async () => {
     fetchMock.mockResolvedValueOnce({
       ok: false,

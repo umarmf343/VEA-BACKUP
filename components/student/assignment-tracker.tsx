@@ -34,6 +34,14 @@ const STATUS_LABEL: Record<StudentAssignmentApi["status"], string> = {
   overdue: "Overdue",
 };
 
+const DUE_SOON_WINDOW_MS = 48 * 60 * 60 * 1000;
+
+function parseDueTime(value?: string) {
+  if (!value) return Number.POSITIVE_INFINITY;
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) ? timestamp : Number.POSITIVE_INFINITY;
+}
+
 function formatDate(value?: string) {
   if (!value) return "--";
   const date = new Date(value);
@@ -45,7 +53,15 @@ function formatDate(value?: string) {
 }
 
 function sortAssignments(assignments: StudentAssignmentApi[]) {
-  return assignments.slice().sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+  return assignments.slice().sort((a, b) => parseDueTime(a.dueDate) - parseDueTime(b.dueDate));
+}
+
+function isDueSoon(assignment: StudentAssignmentApi, now: number) {
+  const dueTime = parseDueTime(assignment.dueDate);
+  if (!Number.isFinite(dueTime) || dueTime <= now) {
+    return false;
+  }
+  return dueTime - now <= DUE_SOON_WINDOW_MS;
 }
 
 export function StudentAssignmentTracker() {
@@ -104,6 +120,7 @@ export function StudentAssignmentTracker() {
   }
 
   const filteredAssignments = assignments.filter((assignment) => (filter === "all" ? true : assignment.status === filter));
+  const now = Date.now();
 
   return (
     <section className="space-y-4">
@@ -145,7 +162,7 @@ export function StudentAssignmentTracker() {
             )
           : filteredAssignments.map((assignment) => {
               const courseName = courses[assignment.courseId]?.name ?? "Unknown course";
-              const dueSoon = new Date(assignment.dueDate).getTime() - Date.now() < 48 * 60 * 60 * 1000;
+              const dueSoon = isDueSoon(assignment, now);
               return (
                 <article key={assignment.id} className="rounded-xl border bg-card p-4 shadow-sm">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">

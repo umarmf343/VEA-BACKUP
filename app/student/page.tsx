@@ -5,24 +5,28 @@ import { StudentGradeOverview } from "@/components/student/grade-overview";
 import { StudentNotificationCenter } from "@/components/student/notification-center";
 import { StudentScheduleOverview } from "@/components/student/schedule-overview";
 import { StudentSupportPanel } from "@/components/student/support-panel";
-import { getStudentFinancialOverview, getStudentProfile, listStudentAttendance } from "@/lib/student-service";
+import {
+  getStudentWorkspaceSnapshot,
+  type StudentAttendanceRecord,
+} from "@/lib/student-service";
 
 export const metadata = {
   title: "Student Learning Hub",
 };
 
-function calculateAttendanceAverage(attendance: ReturnType<typeof listStudentAttendance>) {
+function calculateAttendanceAverage(attendance: StudentAttendanceRecord[]) {
   if (!attendance.length) return 0;
   const total = attendance.reduce((sum, record) => sum + (record.attendanceRate ?? 0), 0);
   return total / attendance.length;
 }
 
 export default function StudentPage() {
-  const profile = getStudentProfile();
-  const attendance = listStudentAttendance();
-  const financial = getStudentFinancialOverview();
+  const { profile, attendance, financial, metrics } = getStudentWorkspaceSnapshot();
   const attendanceAverage = calculateAttendanceAverage(attendance);
   const creditsRemaining = Math.max(profile.creditsRequired - profile.creditsCompleted, 0);
+  const lastSyncLabel = metrics.lastSync
+    ? new Date(metrics.lastSync).toLocaleString("en-NG", { dateStyle: "medium", timeStyle: "short" })
+    : null;
 
   return (
     <main className="space-y-10">
@@ -71,10 +75,11 @@ export default function StudentPage() {
           Credits remaining: {creditsRemaining} • Scholarship: {financial.scholarshipPercentage}% • Last payment on {new Date(
             financial.lastPaymentDate
           ).toLocaleDateString("en-NG", { dateStyle: "medium" })}
+          {lastSyncLabel ? <> • Data synced {lastSyncLabel}</> : null}
         </div>
       </section>
 
-      <StudentDashboard />
+      <StudentDashboard initialData={metrics} />
 
       <div className="grid gap-8 xl:grid-cols-[2fr,1fr]">
         <StudentAssignmentTracker />

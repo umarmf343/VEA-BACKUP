@@ -30,6 +30,16 @@ const STATUS_STYLE: Record<StudentSupportRequestApi["status"], string> = {
   resolved: "border-emerald-200 bg-emerald-50 text-emerald-700",
 };
 
+function toTimestamp(value?: string) {
+  if (!value) return 0;
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function sortRequests(requests: StudentSupportRequestApi[]) {
+  return requests.slice().sort((a, b) => toTimestamp(b.lastUpdated) - toTimestamp(a.lastUpdated));
+}
+
 function formatDateTime(value?: string) {
   if (!value) return "--";
   const date = new Date(value);
@@ -55,7 +65,7 @@ export function StudentSupportPanel() {
         throw new Error(json.error ?? "Failed to load support requests.");
       }
       const json = (await res.json()) as SupportResponse;
-      setRequests(Array.isArray(json.requests) ? json.requests : []);
+      setRequests(Array.isArray(json.requests) ? sortRequests(json.requests) : []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load support requests.");
     } finally {
@@ -83,7 +93,7 @@ export function StudentSupportPanel() {
         throw new Error(json.error ?? "Failed to submit request.");
       }
       const json = (await res.json()) as { request: StudentSupportRequestApi };
-      setRequests((prev) => [json.request, ...prev]);
+      setRequests((prev) => sortRequests([json.request, ...prev]));
       setForm({ topic: "", description: "" });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to submit request.");
@@ -108,7 +118,7 @@ export function StudentSupportPanel() {
         throw new Error(json.error ?? "Failed to send update.");
       }
       const json = (await res.json()) as { request: StudentSupportRequestApi };
-      setRequests((prev) => prev.map((item) => (item.id === id ? json.request : item)));
+      setRequests((prev) => sortRequests(prev.map((item) => (item.id === id ? json.request : item))));
       setReplyDrafts((prev) => ({ ...prev, [id]: "" }));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to send update.");
