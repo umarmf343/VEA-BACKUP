@@ -56,5 +56,8 @@ describe("Auth service", () => {
     expect(authService.hasPermission("super_admin", ["admin"])).toBe(true)
     expect(authService.hasPermission("teacher", ["teacher"])).toBe(true)
     expect(authService.hasPermission("teacher", ["admin"])).toBe(false)
+    expect(authService.hasPermission("teacher", ["teacher", "admin", "super_admin"])).toBe(true)
+    expect(authService.hasPermission("admin", ["teacher"])).toBe(true)
+    expect(authService.hasPermission("parent", ["teacher", "admin"])).toBe(false)
   })
 })

@@ -314,7 +314,7 @@ class AuthService {
     let payload: RefreshTokenPayload
     try {
       payload = jwt.verify(refreshToken, REFRESH_TOKEN_SECRET()) as RefreshTokenPayload
-    } catch (error) {
+    } catch {
       throw new AuthError("Invalid refresh token", 401)
     }
 
@@ -337,7 +337,7 @@ class AuthService {
     let payload: AccessTokenPayload
     try {
       payload = jwt.verify(token, ACCESS_TOKEN_SECRET()) as AccessTokenPayload
-    } catch (error) {
+    } catch {
       throw new AuthError("Unauthorized", 401)
     }
 
@@ -360,21 +360,33 @@ class AuthService {
       return true
     }
 
-    const requiredRank = Math.max(
-      ...requiredRoles.map((role) => {
+    const normalizedRequiredRoles = requiredRoles
+      .map((role) => {
         try {
-          return ROLE_RANK[this.normalizeRole(role)]
+          return this.normalizeRole(role)
         } catch {
-          return Number.NEGATIVE_INFINITY
+          return null
         }
-      }),
-    )
+      })
+      .filter((role): role is UserRole => role !== null)
 
-    if (!Number.isFinite(requiredRank) || requiredRank < 0) {
+    if (normalizedRequiredRoles.length === 0) {
       return false
     }
 
-    return ROLE_RANK[resolvedUserRole] >= requiredRank
+    if (normalizedRequiredRoles.includes(resolvedUserRole)) {
+      return true
+    }
+
+    const userRank = ROLE_RANK[resolvedUserRole]
+    if (typeof userRank !== "number") {
+      return false
+    }
+
+    return normalizedRequiredRoles.some((role) => {
+      const requiredRank = ROLE_RANK[role]
+      return typeof requiredRank === "number" && userRank >= requiredRank
+    })
   }
 }
 
