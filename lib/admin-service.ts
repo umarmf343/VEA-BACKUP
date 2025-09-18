@@ -71,6 +71,8 @@ interface PaymentSnapshot {
   amount: number;
   status: "pending" | "paid" | "failed";
   recordedAt: string;
+  studentId?: string;
+  reference?: string;
 }
 
 export interface AdminDashboardSnapshot {
@@ -111,6 +113,15 @@ function getGlobal(): GlobalWithState {
 
 function clone<T>(value: T): T {
   return typeof structuredClone === "function" ? structuredClone(value) : JSON.parse(JSON.stringify(value));
+}
+
+function formatNaira(amount: number) {
+  try {
+    return new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN", maximumFractionDigits: 0 }).format(amount);
+  } catch (error) {
+    console.error("Currency format fallback:", error);
+    return `₦${Math.round(amount).toLocaleString()}`;
+  }
 }
 
 function ensureState(): AdminState {
@@ -292,6 +303,19 @@ function ensureState(): AdminState {
     };
   }
   return g[GLOBAL_KEY]!;
+}
+
+function pushActivity(state: AdminState, activity: AdminActivity) {
+  state.activities = [activity, ...state.activities].slice(0, 50);
+}
+
+function pushNotification(state: AdminState, notification: AdminNotification) {
+  state.notifications = [notification, ...state.notifications].slice(0, 50);
+}
+
+function upsertPaymentSnapshot(state: AdminState, snapshot: PaymentSnapshot) {
+  const others = state.payments.filter((payment) => payment.id !== snapshot.id);
+  state.payments = [snapshot, ...others].slice(0, 50);
 }
 
 function todayKey(date: Date) {
@@ -538,6 +562,113 @@ export function recordAdminPasswordReset(id: string) {
   state.notifications = [notification, ...state.notifications].slice(0, 50);
 
   return clone(user);
+}
+
+export function markPaymentVerificationActivity(details: {
+  paymentId: string;
+  amount: number;
+  studentId: string;
+  reference?: string | null;
+}) {
+  const state = ensureState();
+  const now = new Date().toISOString();
+  const amount = Number.isFinite(details.amount) ? details.amount : 0;
+  const formattedAmount = formatNaira(amount);
+  const reference = details.reference && details.reference.trim() ? details.reference : details.paymentId;
+  const existingSnapshot = state.payments.find((payment) => payment.id === details.paymentId);
+
+  pushActivity(state, {
+    id: randomUUID(),
+    type: "payment",
+    title: "Payment verified",
+    description: `Verified ${formattedAmount} payment for ${details.studentId} (${reference}).`,
+    timestamp: now,
+    priority: "medium",
+    user: "Admin Control Center",
+    audience: ["admin", "accountant"],
+  });
+
+  pushNotification(state, {
+    id: randomUUID(),
+    type: "success",
+    title: "Payment verification completed",
+    message: `${formattedAmount} for ${details.studentId} has been verified successfully.`,
+    timestamp: now,
+    read: false,
+    category: "payment",
+    audience: ["admin", "accountant"],
+  });
+
+  upsertPaymentSnapshot(state, {
+    id: details.paymentId,
+    amount,
+    status: "pending",
+    recordedAt: now,
+    studentId: details.studentId,
+    reference,
+  });
+
+  if (!existingSnapshot || existingSnapshot.status === "failed") {
+    state.pendingApprovals = Math.max(0, state.pendingApprovals - 1);
+    state.overview.pendingPayments = Math.max(0, state.overview.pendingPayments - 1);
+  }
+}
+
+export function recordPaymentSettlementActivity(details: {
+  paymentId: string;
+  amount: number;
+  studentId: string;
+  reference?: string | null;
+  wasPreviouslyVerified?: boolean;
+}) {
+  const state = ensureState();
+  const now = new Date().toISOString();
+  const amount = Number.isFinite(details.amount) ? details.amount : 0;
+  const formattedAmount = formatNaira(amount);
+  const reference = details.reference && details.reference.trim() ? details.reference : details.paymentId;
+  const existingSnapshot = state.payments.find((payment) => payment.id === details.paymentId);
+  const wasAlreadyPaid = existingSnapshot?.status === "paid";
+
+  pushActivity(state, {
+    id: randomUUID(),
+    type: "payment",
+    title: "Payment marked as paid",
+    description: `Marked ${formattedAmount} payment for ${details.studentId} as settled (${reference}).`,
+    timestamp: now,
+    priority: "medium",
+    user: "Admin Control Center",
+    audience: ["admin", "accountant"],
+  });
+
+  pushNotification(state, {
+    id: randomUUID(),
+    type: "success",
+    title: "Payment settled",
+    message: `${formattedAmount} for ${details.studentId} has been marked as paid.`,
+    timestamp: now,
+    read: false,
+    category: "payment",
+    audience: ["admin", "accountant"],
+  });
+
+  upsertPaymentSnapshot(state, {
+    id: details.paymentId,
+    amount,
+    status: "paid",
+    recordedAt: now,
+    studentId: details.studentId,
+    reference,
+  });
+
+  if (!wasAlreadyPaid && !details.wasPreviouslyVerified) {
+    state.pendingApprovals = Math.max(0, state.pendingApprovals - 1);
+  }
+
+  if (!wasAlreadyPaid) {
+    state.overview.pendingPayments = Math.max(0, state.overview.pendingPayments - 1);
+    state.overview.totalRevenue = Math.max(0, state.overview.totalRevenue + amount);
+    state.overview.paidStudents = Math.min(state.overview.totalStudents, state.overview.paidStudents + 1);
+  }
 }
 
 export function resetAdminState() {
