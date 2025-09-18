@@ -7,7 +7,7 @@
 // - Inconsistent metric cards and spacing
 //
 // Expected API (adjust if your routes differ):
-//   GET /api/dashboard/student -> { assignmentsDue: number; notices: number; paymentsPending: number }
+//   GET /api/dashboard/student -> { assignmentsDue: number; notices: number; paymentsPending: number; lastSync?: string }
 //
 // Dependencies: none beyond your global styles (uses HSL token utilities from globals.css).
 
@@ -20,18 +20,23 @@ type StudentData = {
   assignmentsDue: number;
   notices: number;
   paymentsPending: number;
+  lastSync?: string;
 };
+
+interface StudentDashboardProps {
+  initialData?: StudentData | null;
+}
 
 const ENDPOINT = "/api/dashboard/student";
 const POLL_MS = 10_000;
 
-export default function StudentDashboard() {
-  const [data, setData] = React.useState<StudentData | null>(null);
+export default function StudentDashboard({ initialData = null }: StudentDashboardProps = {}) {
+  const [data, setData] = React.useState<StudentData | null>(initialData ?? null);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const alertRef = React.useRef<HTMLDivElement | null>(null);
 
-  async function load() {
+  const load = React.useCallback(async () => {
     setError(null);
     setLoading(true);
     try {
@@ -44,6 +49,7 @@ export default function StudentDashboard() {
         assignmentsDue: Number(json.assignmentsDue ?? 0),
         notices: Number(json.notices ?? 0),
         paymentsPending: Number(json.paymentsPending ?? 0),
+        lastSync: typeof json.lastSync === "string" ? json.lastSync : undefined,
       };
       setData(safe);
     } catch (err: any) {
@@ -52,14 +58,13 @@ export default function StudentDashboard() {
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
   React.useEffect(() => {
     load();
     const t = setInterval(load, POLL_MS);
     return () => clearInterval(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [load]);
 
   return (
     <section className="space-y-4">
@@ -103,14 +108,26 @@ export default function StudentDashboard() {
           <SkeletonCard />
         </div>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-3">
-          <MetricCard title="Assignments Due" value={data?.assignmentsDue ?? 0} />
-          <MetricCard title="Notices" value={data?.notices ?? 0} />
-          <MetricCard title="Payments Pending" value={data?.paymentsPending ?? 0} />
+        <div className="space-y-2">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <MetricCard title="Assignments Due" value={data?.assignmentsDue ?? 0} />
+            <MetricCard title="Notices" value={data?.notices ?? 0} />
+            <MetricCard title="Payments Pending" value={data?.paymentsPending ?? 0} />
+          </div>
+          {data?.lastSync ? (
+            <p className="text-xs text-muted-foreground">Last synced {formatLastSync(data.lastSync)}</p>
+          ) : null}
         </div>
       )}
     </section>
   );
+}
+
+function formatLastSync(value?: string) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("en-NG", { dateStyle: "medium", timeStyle: "short" }).format(date);
 }
 
 function MetricCard({ title, value }: { title: string; value: number }) {

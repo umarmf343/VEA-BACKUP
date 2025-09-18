@@ -127,6 +127,13 @@ export interface StudentDashboardMetrics {
   lastSync: string;
 }
 
+export interface StudentWorkspaceSnapshot {
+  profile: StudentProfile;
+  attendance: StudentAttendanceRecord[];
+  financial: StudentFinancialOverview;
+  metrics: StudentDashboardMetrics;
+}
+
 interface StudentState {
   profile: StudentProfile;
   courses: StudentCourse[];
@@ -525,6 +532,30 @@ function touch(state: StudentState) {
   state.lastSync = new Date().toISOString();
 }
 
+function computeStudentDashboardMetrics(state: StudentState): StudentDashboardMetrics {
+  const now = Date.now();
+
+  const assignmentsDue = state.assignments.filter((assignment) => {
+    if (assignment.status === "submitted" || assignment.status === "graded") {
+      return false;
+    }
+    const dueTime = new Date(assignment.dueDate).getTime();
+    if (!Number.isFinite(dueTime)) {
+      return false;
+    }
+    return dueTime >= now - 24 * 60 * 60 * 1000;
+  }).length;
+
+  const notices = state.notifications.filter((notification) => !notification.read && !notification.archivedAt).length;
+
+  return {
+    assignmentsDue,
+    notices,
+    paymentsPending: Math.max(0, state.financial.pendingPayments),
+    lastSync: state.lastSync,
+  };
+}
+
 export function getStudentProfile(): StudentProfile {
   return clone(ensureState().profile);
 }
@@ -569,22 +600,16 @@ export function listStudentSupportRequests(): StudentSupportRequest[] {
 
 export function getStudentDashboardMetrics(): StudentDashboardMetrics {
   const state = ensureState();
-  const now = Date.now();
-  const assignmentsDue = state.assignments.filter((assignment) => {
-    if (assignment.status === "submitted" || assignment.status === "graded") {
-      return false;
-    }
-    const dueTime = new Date(assignment.dueDate).getTime();
-    return Number.isFinite(dueTime) && dueTime >= now - 24 * 60 * 60 * 1000;
-  }).length;
+  return computeStudentDashboardMetrics(state);
+}
 
-  const notices = state.notifications.filter((notification) => !notification.read && !notification.archivedAt).length;
-
+export function getStudentWorkspaceSnapshot(): StudentWorkspaceSnapshot {
+  const state = ensureState();
   return {
-    assignmentsDue,
-    notices,
-    paymentsPending: Math.max(0, state.financial.pendingPayments),
-    lastSync: state.lastSync,
+    profile: clone(state.profile),
+    attendance: clone(state.attendance),
+    financial: clone(state.financial),
+    metrics: computeStudentDashboardMetrics(state),
   };
 }
 
