@@ -14,7 +14,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     const payload = await request.json();
     const updates: Record<string, unknown> = payload ?? {};
 
-    const result = updateTeacherAssignment(assignmentId, {
+    const result = await updateTeacherAssignment(assignmentId, {
       status: typeof updates.status === "string" ? (updates.status as any) : undefined,
       submissionsPending:
         typeof updates.submissionsPending === "number" ? Number(updates.submissionsPending) : undefined,

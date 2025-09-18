@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const classes = listTeacherClasses();
+    const classes = await listTeacherClasses();
     return NextResponse.json({ classes });
   } catch (error) {
     console.error("Failed to load teacher classes", error);

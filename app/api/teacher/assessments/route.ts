@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const assessments = listTeacherAssessments();
+    const assessments = await listTeacherAssessments();
     return NextResponse.json({ assessments });
   } catch (error) {
     console.error("Failed to load teacher assessments", error);

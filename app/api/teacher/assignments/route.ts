@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const assignments = listTeacherAssignments();
+    const assignments = await listTeacherAssignments();
     return NextResponse.json({ assignments });
   } catch (error) {
     console.error("Failed to load teacher assignments", error);
@@ -29,7 +29,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "dueDate is required." }, { status: 400 });
     }
 
-    const assignment = createTeacherAssignment({
+    const assignment = await createTeacherAssignment({
       title: title.trim(),
       description: typeof description === "string" ? description.trim() : undefined,
       classId: classId.trim(),

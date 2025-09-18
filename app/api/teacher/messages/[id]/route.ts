@@ -14,7 +14,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     const payload = await request.json();
     const updates: Record<string, unknown> = payload ?? {};
 
-    const result = updateTeacherMessage(messageId, {
+    const result = await updateTeacherMessage(messageId, {
       read: typeof updates.read === "boolean" ? updates.read : undefined,
       archived: typeof updates.archived === "boolean" ? updates.archived : undefined,
     });
