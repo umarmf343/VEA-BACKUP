@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Settings, Save, RotateCcw } from "lucide-react"
 import { safeStorage } from "@/lib/safe-storage"
+import { useNotification } from "@/hooks/use-notification"
 
 export function SystemSettings() {
   const [registrationEnabled, setRegistrationEnabled] = useState(() => {
@@ -22,11 +23,14 @@ export function SystemSettings() {
   )
   const [currentSession, setCurrentSession] = useState("2024/2025")
   const [currentTerm, setCurrentTerm] = useState("Third Term")
+  const { notifySuccess, notifyInfo } = useNotification()
 
   const handleSaveSettings = () => {
     safeStorage.setItem("registrationEnabled", JSON.stringify(registrationEnabled))
     // In a real app, these would be saved to a backend
-    alert("Settings saved successfully!")
+    notifySuccess("Settings saved", {
+      description: "Your configuration changes are now active.",
+    })
     if (typeof window !== "undefined") {
       window.location.reload()
     }
@@ -35,7 +39,9 @@ export function SystemSettings() {
   const handleResetPassword = (userEmail: string) => {
     // Mock password reset functionality
     const newPassword = Math.random().toString(36).slice(-8)
-    alert(`Password reset for ${userEmail}. New password: ${newPassword}`)
+    notifyInfo(`Password reset for ${userEmail}`, {
+      description: `Temporary password: ${newPassword}`,
+    })
   }
 
   return (

@@ -6,6 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label"
 import { EnhancedReportCard } from "@/components/enhanced-report-card"
 import type { ReportCardResponse } from "@/lib/report-card-types"
+import { useNotification } from "@/hooks/use-notification"
 
 interface ReportCardViewerProps {
   studentId: string
@@ -19,10 +20,13 @@ export function ReportCardViewer({ studentId, studentName, userRole, hasAccess }
   const [selectedSession, setSelectedSession] = useState("2024/2025")
   const [reportCardData, setReportCardData] = useState<ReportCardResponse | null>(null)
   const [loading, setLoading] = useState(false)
+  const { notifyError, notifyInfo, notifyWarning } = useNotification()
 
   const loadReportCard = async () => {
     if (!hasAccess) {
-      alert("Access denied. Please complete payment or contact admin.")
+      notifyWarning("Access denied", {
+        description: "Complete payment or contact the administrator to view report cards.",
+      })
       return
     }
 
@@ -38,7 +42,9 @@ export function ReportCardViewer({ studentId, studentName, userRole, hasAccess }
 
       if (!response.ok) {
         if (response.status === 404) {
-          alert("No report card data found for the selected term and session.")
+          notifyInfo("No report card found", {
+            description: "Try another term or session, or contact the school office.",
+          })
           setReportCardData(null)
           return
         }
@@ -49,7 +55,9 @@ export function ReportCardViewer({ studentId, studentName, userRole, hasAccess }
       setReportCardData(payload.data)
     } catch (error) {
       console.error("Error loading report card:", error)
-      alert("Error loading report card. Please try again.")
+      notifyError("Unable to load report card", {
+        description: "Please try again shortly.",
+      })
     } finally {
       setLoading(false)
     }
