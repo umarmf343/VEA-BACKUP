@@ -1,5 +1,7 @@
 import { randomUUID } from "crypto"
 
+import { readPersistentState, resetPersistentState, writePersistentState } from "./persistent-state"
+
 export type PaymentStatus = "pending" | "paid" | "failed"
 
 export const PAYMENT_STATUS: Record<PaymentStatus, PaymentStatus> = {
@@ -20,13 +22,9 @@ export interface PaymentRecord {
   updatedAt?: string
 }
 
-const GLOBAL_KEY = "__veaPayments"
+const STORE_KEY = "payments.store"
 
-type GlobalWithPayments = typeof globalThis & { [GLOBAL_KEY]?: PaymentRecord[] }
-
-function getGlobal(): GlobalWithPayments {
-  return globalThis as GlobalWithPayments
-}
+let cache: PaymentRecord[] | null = null
 
 function clone<T>(value: T): T {
   return typeof structuredClone === "function" ? structuredClone(value) : JSON.parse(JSON.stringify(value))
@@ -64,25 +62,27 @@ function seedPayments(): PaymentRecord[] {
   ]
 }
 
-function ensureStore(): PaymentRecord[] {
-  const g = getGlobal() as GlobalWithPayments & { _PAYMENTS?: PaymentRecord[] }
-  if (Array.isArray(g._PAYMENTS)) {
-    g[GLOBAL_KEY] = g._PAYMENTS
+function getStore(): PaymentRecord[] {
+  if (!cache) {
+    cache = readPersistentState<PaymentRecord[]>(STORE_KEY, () => seedPayments())
   }
-  if (!g[GLOBAL_KEY]) {
-    g[GLOBAL_KEY] = seedPayments()
+  return cache
+}
+
+function persistStore() {
+  if (cache) {
+    writePersistentState(STORE_KEY, cache)
   }
-  return g[GLOBAL_KEY]!
 }
 
 export function listPayments(status?: PaymentStatus): PaymentRecord[] {
-  const store = ensureStore()
+  const store = getStore()
   const items = status ? store.filter((payment) => payment.status === status) : [...store]
   return clone(items.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()))
 }
 
 function findPaymentOrThrow(id: string): [PaymentRecord[], number, PaymentRecord] {
-  const store = ensureStore()
+  const store = getStore()
   const index = store.findIndex((payment) => payment.id === id)
   if (index === -1) {
     throw new Error("Payment not found")
@@ -114,6 +114,7 @@ export function verifyPayment(id: string): PaymentRecord {
   }
 
   store[index] = updated
+  persistStore()
   return clone(updated)
 }
 
@@ -138,13 +139,22 @@ export function markPaymentAsPaid(id: string): MarkPaymentResult {
   }
 
   store[index] = updated
+  persistStore()
   return { payment: clone(updated), wasPreviouslyVerified }
 }
 
+export function appendPayment(record: PaymentRecord) {
+  const store = getStore()
+  store.push({ ...record })
+  persistStore()
+}
+
 export function resetPaymentsStore() {
-  const g = getGlobal() as GlobalWithPayments & { _PAYMENTS?: PaymentRecord[] }
-  delete g[GLOBAL_KEY]
-  if (g._PAYMENTS) {
-    delete g._PAYMENTS
-  }
+  cache = null
+  resetPersistentState(STORE_KEY)
+}
+
+export function __setPaymentsForTests(payments: PaymentRecord[]) {
+  cache = payments.map((payment) => ({ ...payment }))
+  persistStore()
 }

@@ -10,6 +10,7 @@ import {
   resetAuthThrottles,
 } from "@/lib/auth-service"
 import { generateToken, sanitizeInput, verifyPassword } from "@/lib/security"
+import { readPersistentState, writePersistentState } from "@/lib/persistent-state"
 
 export const runtime = "nodejs"
 
@@ -23,7 +24,22 @@ type RateEntry = {
   firstAttemptAt: number
 }
 
-const ipAttempts = new Map<string, RateEntry>()
+const IP_ATTEMPTS_STORE_KEY = "auth.login.ipAttempts"
+
+let ipAttemptsStore: Record<string, RateEntry> | null = null
+
+function getIpAttemptsStore() {
+  if (!ipAttemptsStore) {
+    ipAttemptsStore = readPersistentState<Record<string, RateEntry>>(IP_ATTEMPTS_STORE_KEY, () => ({}))
+  }
+  return ipAttemptsStore
+}
+
+function persistIpAttempts() {
+  if (ipAttemptsStore) {
+    writePersistentState(IP_ATTEMPTS_STORE_KEY, ipAttemptsStore)
+  }
+}
 
 function normalizeEmail(email: string) {
   return sanitizeInput(email).toLowerCase()
@@ -39,13 +55,15 @@ function getClientIp(request: Request) {
 
 function evaluateIpLimit(ip: string, now: number) {
   const limit = LOGIN_THROTTLE_LIMITS.ip
-  const entry = ipAttempts.get(ip)
+  const store = getIpAttemptsStore()
+  const entry = store[ip]
   if (!entry) {
     return { blocked: false as const }
   }
   const elapsed = now - entry.firstAttemptAt
   if (elapsed > limit.windowMs) {
-    ipAttempts.set(ip, { count: 0, firstAttemptAt: now })
+    delete store[ip]
+    persistIpAttempts()
     return { blocked: false as const }
   }
   if (entry.count >= limit.max) {
@@ -56,22 +74,23 @@ function evaluateIpLimit(ip: string, now: number) {
 
 function registerIpAttempt(ip: string, now: number) {
   const limit = LOGIN_THROTTLE_LIMITS.ip
-  const entry = ipAttempts.get(ip)
-  if (!entry) {
-    ipAttempts.set(ip, { count: 1, firstAttemptAt: now })
-    return
-  }
-  const elapsed = now - entry.firstAttemptAt
-  if (elapsed > limit.windowMs) {
-    ipAttempts.set(ip, { count: 1, firstAttemptAt: now })
+  const store = getIpAttemptsStore()
+  const entry = store[ip]
+  if (!entry || now - entry.firstAttemptAt > limit.windowMs) {
+    store[ip] = { count: 1, firstAttemptAt: now }
+    persistIpAttempts()
     return
   }
   entry.count += 1
-  ipAttempts.set(ip, entry)
+  persistIpAttempts()
 }
 
 function clearIpAttempts(ip: string) {
-  ipAttempts.delete(ip)
+  const store = getIpAttemptsStore()
+  if (store[ip]) {
+    delete store[ip]
+    persistIpAttempts()
+  }
 }
 
 function secondsFromMs(ms: number | undefined) {
@@ -82,7 +101,9 @@ function secondsFromMs(ms: number | undefined) {
 }
 
 export function resetLoginThrottling() {
-  ipAttempts.clear()
+  ipAttemptsStore = {}
+  persistIpAttempts()
+  ipAttemptsStore = null
   resetAuthThrottles()
 }
 

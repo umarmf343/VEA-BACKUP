@@ -1,9 +1,12 @@
+import { randomBytes } from "crypto"
+
 import jwt, { SignOptions, VerifyOptions } from "jsonwebtoken"
 
 import { verifyPassword as verifyPasswordWithScrypt } from "./auth"
 
 const DEFAULT_JWT_TTL = "24h"
-const FALLBACK_SECRET = "vea-portal-development-secret"
+
+let runtimeSecret: string | null = null
 
 type Primitive = string | number | boolean | null | undefined
 
@@ -17,11 +20,21 @@ type TokenPayload = {
 }
 
 function resolveSecret() {
-  const secret = process.env.JWT_SECRET
-  if (typeof secret === "string" && secret.trim().length > 0) {
-    return secret
+  if (runtimeSecret) {
+    return runtimeSecret
   }
-  return FALLBACK_SECRET
+
+  const envSecret = process.env.JWT_SECRET
+  if (typeof envSecret === "string" && envSecret.trim().length >= 32) {
+    runtimeSecret = envSecret.trim()
+    return runtimeSecret
+  }
+
+  runtimeSecret = randomBytes(48).toString("hex")
+  if (process.env.NODE_ENV !== "production") {
+    console.warn("JWT_SECRET is not configured. Generated an ephemeral secret for this runtime instance.")
+  }
+  return runtimeSecret
 }
 
 function normalizeRole(value: string) {
@@ -46,18 +59,9 @@ export async function verifyPassword(password: string, storedHash: string) {
 
 export function generateToken(payload: TokenPayload, options: SignOptions = {}) {
   const secret = resolveSecret()
-  const finalPayload: TokenPayload = {
-    ...payload,
-    userId: payload.userId ?? payload.id,
-  }
-  if (!finalPayload.email && typeof payload.email === "string") {
-    finalPayload.email = payload.email
-  }
-  if (!finalPayload.role && typeof payload.role === "string") {
-    finalPayload.role = payload.role
-  }
-  if (!finalPayload.name && typeof payload.name === "string") {
-    finalPayload.name = payload.name
+  const finalPayload: TokenPayload = { ...payload }
+  if (!finalPayload.userId && typeof payload.id === "string" && payload.id) {
+    finalPayload.userId = payload.id
   }
   return jwt.sign(finalPayload, secret, { expiresIn: DEFAULT_JWT_TTL, ...options })
 }
