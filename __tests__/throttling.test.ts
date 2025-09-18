@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "@jest/globals"
 import { LOCKOUT_DURATION_MS, MAX_FAILED_ATTEMPTS } from "@/lib/auth-service"
+import { resetPaymentsStore } from "@/lib/payments-store"
 
 jest.mock("next/server", () => ({
   NextResponse: {
@@ -112,7 +113,7 @@ beforeEach(() => {
   resetInitializeRateLimit()
   resetVerifyRateLimit()
   getUserByEmail.mockReset()
-  delete (globalThis as any)._PAYMENTS
+  resetPaymentsStore()
 })
 
 describe("Login throttling", () => {

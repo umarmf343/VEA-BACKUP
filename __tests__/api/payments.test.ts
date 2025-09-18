@@ -6,10 +6,11 @@ import { NextRequest } from "next/server"
 
 import { GET as listPayments } from "@/app/api/payments/route"
 import { POST as initializePayment } from "@/app/api/payments/initialize/route"
+import { __setPaymentsForTests, resetPaymentsStore } from "@/lib/payments-store"
 
 describe("payments API", () => {
   beforeEach(() => {
-    delete (globalThis as any)._PAYMENTS
+    resetPaymentsStore()
     process.env.PAYSTACK_SECRET_KEY = ""
     process.env.NEXT_PUBLIC_APP_URL = "http://localhost:3000"
   })
@@ -44,10 +45,10 @@ describe("payments API", () => {
   })
 
   it("filters payments by status", async () => {
-    ;(globalThis as any)._PAYMENTS = [
+    __setPaymentsForTests([
       { id: "1", studentId: "STU-1", amount: 1000, status: "pending", createdAt: new Date().toISOString() },
       { id: "2", studentId: "STU-2", amount: 2000, status: "paid", createdAt: new Date().toISOString() },
-    ]
+    ])
 
     const response = await listPayments(
       new NextRequest("http://localhost/api/payments?status=paid")

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 
 import { markPaymentVerificationActivity } from "@/lib/admin-service"
 import { verifyPayment } from "@/lib/payments-store"
+import { readPersistentState, resetPersistentState, writePersistentState } from "@/lib/persistent-state"
 
 export const runtime = "nodejs"
 
@@ -15,7 +16,22 @@ type RateEntry = {
   firstRequestAt: number
 }
 
-const verifyRateMap = new Map<string, RateEntry>()
+const RATE_LIMIT_STORE_KEY = "payments.verify.rateLimit"
+
+let verifyRateState: Record<string, RateEntry> | null = null
+
+function getVerifyRateState() {
+  if (!verifyRateState) {
+    verifyRateState = readPersistentState<Record<string, RateEntry>>(RATE_LIMIT_STORE_KEY, () => ({}))
+  }
+  return verifyRateState
+}
+
+function persistVerifyRateState() {
+  if (verifyRateState) {
+    writePersistentState(RATE_LIMIT_STORE_KEY, verifyRateState)
+  }
+}
 
 function getClientIp(request: Request) {
   const forwarded = request.headers?.get("x-forwarded-for")
@@ -25,13 +41,15 @@ function getClientIp(request: Request) {
 }
 
 function evaluateRateLimit(ip: string, now: number) {
-  const entry = verifyRateMap.get(ip)
+  const store = getVerifyRateState()
+  const entry = store[ip]
   if (!entry) {
     return { blocked: false as const }
   }
   const elapsed = now - entry.firstRequestAt
   if (elapsed > PAYMENT_VERIFY_RATE_LIMIT.windowMs) {
-    verifyRateMap.set(ip, { count: 0, firstRequestAt: now })
+    delete store[ip]
+    persistVerifyRateState()
     return { blocked: false as const }
   }
   if (entry.count >= PAYMENT_VERIFY_RATE_LIMIT.max) {
@@ -41,18 +59,15 @@ function evaluateRateLimit(ip: string, now: number) {
 }
 
 function registerAttempt(ip: string, now: number) {
-  const entry = verifyRateMap.get(ip)
-  if (!entry) {
-    verifyRateMap.set(ip, { count: 1, firstRequestAt: now })
-    return
-  }
-  const elapsed = now - entry.firstRequestAt
-  if (elapsed > PAYMENT_VERIFY_RATE_LIMIT.windowMs) {
-    verifyRateMap.set(ip, { count: 1, firstRequestAt: now })
+  const store = getVerifyRateState()
+  const entry = store[ip]
+  if (!entry || now - entry.firstRequestAt > PAYMENT_VERIFY_RATE_LIMIT.windowMs) {
+    store[ip] = { count: 1, firstRequestAt: now }
+    persistVerifyRateState()
     return
   }
   entry.count += 1
-  verifyRateMap.set(ip, entry)
+  persistVerifyRateState()
 }
 
 function secondsFromMs(ms: number | undefined) {
@@ -62,8 +77,23 @@ function secondsFromMs(ms: number | undefined) {
   return String(Math.max(1, Math.ceil(ms / 1000)))
 }
 
+function pruneVerifyEntries(now: number) {
+  const store = getVerifyRateState()
+  let dirty = false
+  for (const [ip, entry] of Object.entries(store)) {
+    if (now - entry.firstRequestAt > PAYMENT_VERIFY_RATE_LIMIT.windowMs) {
+      delete store[ip]
+      dirty = true
+    }
+  }
+  if (dirty) {
+    persistVerifyRateState()
+  }
+}
+
 export function resetVerifyRateLimit() {
-  verifyRateMap.clear()
+  verifyRateState = null
+  resetPersistentState(RATE_LIMIT_STORE_KEY)
 }
 
 export async function POST(request: Request) {
@@ -71,6 +101,7 @@ export async function POST(request: Request) {
   const ip = getClientIp(request)
 
   try {
+    pruneVerifyEntries(now)
     const status = evaluateRateLimit(ip, now)
     if (status.blocked) {
       return NextResponse.json(

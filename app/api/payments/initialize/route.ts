@@ -1,7 +1,8 @@
 import { randomUUID } from "crypto"
 import { NextResponse } from "next/server"
 
-import { PAYMENT_STATUS } from "@/lib/payments-store"
+import { PAYMENT_STATUS, appendPayment } from "@/lib/payments-store"
+import { readPersistentState, resetPersistentState, writePersistentState } from "@/lib/persistent-state"
 
 export const runtime = "nodejs"
 
@@ -15,7 +16,22 @@ type RateEntry = {
   firstRequestAt: number
 }
 
-const rateMap = new Map<string, RateEntry>()
+const RATE_LIMIT_STORE_KEY = "payments.initialize.rateLimit"
+
+let rateState: Record<string, RateEntry> | null = null
+
+function getRateState() {
+  if (!rateState) {
+    rateState = readPersistentState<Record<string, RateEntry>>(RATE_LIMIT_STORE_KEY, () => ({}))
+  }
+  return rateState
+}
+
+function persistRateState() {
+  if (rateState) {
+    writePersistentState(RATE_LIMIT_STORE_KEY, rateState)
+  }
+}
 
 function getClientIp(request: Request) {
   const forwarded = request.headers?.get("x-forwarded-for")
@@ -25,13 +41,15 @@ function getClientIp(request: Request) {
 }
 
 function evaluateRateLimit(ip: string, now: number) {
-  const entry = rateMap.get(ip)
+  const store = getRateState()
+  const entry = store[ip]
   if (!entry) {
     return { blocked: false as const }
   }
   const elapsed = now - entry.firstRequestAt
   if (elapsed > PAYMENT_INITIALIZE_RATE_LIMIT.windowMs) {
-    rateMap.set(ip, { count: 0, firstRequestAt: now })
+    delete store[ip]
+    persistRateState()
     return { blocked: false as const }
   }
   if (entry.count >= PAYMENT_INITIALIZE_RATE_LIMIT.max) {
@@ -41,18 +59,15 @@ function evaluateRateLimit(ip: string, now: number) {
 }
 
 function registerAttempt(ip: string, now: number) {
-  const entry = rateMap.get(ip)
-  if (!entry) {
-    rateMap.set(ip, { count: 1, firstRequestAt: now })
-    return
-  }
-  const elapsed = now - entry.firstRequestAt
-  if (elapsed > PAYMENT_INITIALIZE_RATE_LIMIT.windowMs) {
-    rateMap.set(ip, { count: 1, firstRequestAt: now })
+  const store = getRateState()
+  const entry = store[ip]
+  if (!entry || now - entry.firstRequestAt > PAYMENT_INITIALIZE_RATE_LIMIT.windowMs) {
+    store[ip] = { count: 1, firstRequestAt: now }
+    persistRateState()
     return
   }
   entry.count += 1
-  rateMap.set(ip, entry)
+  persistRateState()
 }
 
 function secondsFromMs(ms: number | undefined) {
@@ -62,16 +77,23 @@ function secondsFromMs(ms: number | undefined) {
   return String(Math.max(1, Math.ceil(ms / 1000)))
 }
 
-export function resetInitializeRateLimit() {
-  rateMap.clear()
+function pruneExpiredEntries(now: number) {
+  const store = getRateState()
+  let dirty = false
+  for (const [ip, entry] of Object.entries(store)) {
+    if (now - entry.firstRequestAt > PAYMENT_INITIALIZE_RATE_LIMIT.windowMs) {
+      delete store[ip]
+      dirty = true
+    }
+  }
+  if (dirty) {
+    persistRateState()
+  }
 }
 
-function getMutableStore() {
-  const g = globalThis as typeof globalThis & { _PAYMENTS?: any[] }
-  if (!Array.isArray(g._PAYMENTS)) {
-    g._PAYMENTS = []
-  }
-  return g._PAYMENTS
+export function resetInitializeRateLimit() {
+  rateState = null
+  resetPersistentState(RATE_LIMIT_STORE_KEY)
 }
 
 export async function POST(request: Request) {
@@ -79,6 +101,7 @@ export async function POST(request: Request) {
   const ip = getClientIp(request)
 
   try {
+    pruneExpiredEntries(now)
     const status = evaluateRateLimit(ip, now)
     if (status.blocked) {
       return NextResponse.json(
@@ -109,8 +132,7 @@ export async function POST(request: Request) {
     const reference = `DEV-${randomUUID().replace(/[^a-zA-Z0-9]/g, "").slice(0, 12).toLowerCase()}`
     const authorizationUrl = `https://paystack.com/pay/dev-${reference}`
 
-    const store = getMutableStore()
-    store.push({
+    appendPayment({
       id: reference,
       studentId,
       amount,
