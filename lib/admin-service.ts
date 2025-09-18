@@ -471,14 +471,16 @@ export function updateAdminUser(id: string, updates: UpdateAdminUserInput) {
   }
 
   const existing = state.users[index];
+  const { lastLogin, ...rest } = updates;
   const updated: AdminUser = {
     ...existing,
-    ...updates,
+    ...rest,
     name: updates.name?.trim() ?? existing.name,
     email: updates.email?.trim().toLowerCase() ?? existing.email,
     assignedClasses: updates.assignedClasses?.slice() ?? existing.assignedClasses,
     assignedSubjects: updates.assignedSubjects?.slice() ?? existing.assignedSubjects,
     studentIds: updates.studentIds?.slice() ?? existing.studentIds,
+    lastLogin: lastLogin ?? existing.lastLogin,
   };
 
   state.users[index] = updated;
@@ -509,33 +511,31 @@ export function recordAdminPasswordReset(id: string) {
   }
 
   const now = new Date().toISOString();
-  state.activities = [
-    {
-      id: randomUUID(),
-      type: "security",
-      title: "Password reset",
-      description: `Password reset initiated for ${user.name} (${user.email}).`,
-      timestamp: now,
-      priority: "medium",
-      user: "Admin Service",
-      audience: ["admin"],
-    },
-    ...state.activities,
-  ].slice(0, 50);
+  const activity: AdminActivity = {
+    id: randomUUID(),
+    type: "security",
+    title: "Password reset",
+    description: `Password reset initiated for ${user.name} (${user.email}).`,
+    timestamp: now,
+    priority: "medium",
+    user: "Admin Service",
+    audience: ["admin"],
+  };
 
-  state.notifications = [
-    {
-      id: randomUUID(),
-      type: "info",
-      title: "Password reset completed",
-      message: `${user.name}'s password was reset by an administrator.`,
-      timestamp: now,
-      read: false,
-      category: "security",
-      audience: ["admin"],
-    },
-    ...state.notifications,
-  ].slice(0, 50);
+  state.activities = [activity, ...state.activities].slice(0, 50);
+
+  const notification: AdminNotification = {
+    id: randomUUID(),
+    type: "info",
+    title: "Password reset completed",
+    message: `${user.name}'s password was reset by an administrator.`,
+    timestamp: now,
+    read: false,
+    category: "security",
+    audience: ["admin"],
+  };
+
+  state.notifications = [notification, ...state.notifications].slice(0, 50);
 
   return clone(user);
 }

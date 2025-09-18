@@ -8,6 +8,19 @@ import {
 } from "lucide-react"
 import { DayButton, DayPicker, getDefaultClassNames } from "react-day-picker"
 
+type DayPickerComponents = NonNullable<
+  React.ComponentProps<typeof DayPicker>["components"]
+>
+type RootComponentProps = Parameters<
+  NonNullable<DayPickerComponents["Root"]>
+>[0]
+type ChevronComponentProps = Parameters<
+  NonNullable<DayPickerComponents["Chevron"]>
+>[0]
+type WeekNumberComponentProps = Parameters<
+  NonNullable<DayPickerComponents["WeekNumber"]>
+>[0]
+
 import { cn } from "@/lib/utils"
 import { Button, buttonVariants } from "@/components/ui/button"
 
@@ -125,7 +138,7 @@ function Calendar({
         ...classNames,
       }}
       components={{
-        Root: ({ className, rootRef, ...props }) => {
+        Root: ({ className, rootRef, ...props }: RootComponentProps) => {
           return (
             <div
               data-slot="calendar"
@@ -135,7 +148,11 @@ function Calendar({
             />
           )
         },
-        Chevron: ({ className, orientation, ...props }) => {
+        Chevron: ({
+          className,
+          orientation,
+          ...props
+        }: ChevronComponentProps) => {
           if (orientation === "left") {
             return (
               <ChevronLeftIcon className={cn("size-4", className)} {...props} />
@@ -156,7 +173,7 @@ function Calendar({
           )
         },
         DayButton: CalendarDayButton,
-        WeekNumber: ({ children, ...props }) => {
+        WeekNumber: ({ children, ...props }: WeekNumberComponentProps) => {
           return (
             <td {...props}>
               <div className="flex size-(--cell-size) items-center justify-center text-center">

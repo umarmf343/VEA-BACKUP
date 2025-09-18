@@ -21,7 +21,7 @@ import {
   Line,
 } from "recharts"
 import { DollarSign, TrendingUp, Users, Download, Printer, AlertTriangle, Loader2 } from "lucide-react"
-import { dbManager } from "@/lib/database-manager"
+import { dbManager, type FinancialSummary } from "@/lib/database-manager"
 
 interface FinancialReportsProps {
   userRole: string
@@ -37,6 +37,7 @@ export function FinancialReports({ userRole }: FinancialReportsProps) {
   const [classWiseCollection, setClassWiseCollection] = useState<any[]>([])
   const [expenseData, setExpenseData] = useState<any[]>([])
   const [defaultersData, setDefaultersData] = useState<any[]>([])
+  const [financialSummary, setFinancialSummary] = useState<FinancialSummary | null>(null)
   const [summaryStats, setSummaryStats] = useState({
     totalCollected: 0,
     collectionRate: 0,
@@ -83,7 +84,24 @@ export function FinancialReports({ userRole }: FinancialReportsProps) {
       setClassWiseCollection(classCollection)
       setExpenseData(expenses)
       setDefaultersData(defaulters)
-      setSummaryStats(stats)
+      setFinancialSummary(stats)
+
+      const totalStudents = classCollection.reduce(
+        (acc, current) => acc + (typeof current.students === "number" ? current.students : 0),
+        0,
+      )
+      const studentsPaid = Math.max(totalStudents - defaulters.length, 0)
+      const collectionRate = stats.totalExpected > 0 ? Math.round((stats.totalCollected / stats.totalExpected) * 100) : 0
+
+      setSummaryStats({
+        totalCollected: stats.totalCollected,
+        collectionRate,
+        studentsPaid,
+        defaultersCount: defaulters.length,
+        outstandingAmount: stats.outstanding,
+        avgCollectionTime: 14,
+        onTimePaymentRate: collectionRate,
+      })
     } catch (err) {
       setError("Failed to load financial data")
       console.error("Error loading financial data:", err)
@@ -100,6 +118,18 @@ export function FinancialReports({ userRole }: FinancialReportsProps) {
 
   const handleDownload = async () => {
     try {
+      const persistedReport = {
+        type: selectedPeriod,
+        totals: {
+          revenue: financialSummary?.totalCollected ?? summaryStats.totalCollected,
+          expenses: financialSummary?.expenses ?? 0,
+          outstanding: financialSummary?.outstanding ?? summaryStats.outstandingAmount,
+        },
+        notes: `Financial report generated for ${selectedPeriod}`,
+      }
+
+      await dbManager.saveFinancialReport(persistedReport)
+
       const reportData = {
         period: selectedPeriod,
         feeCollection: feeCollectionData,
@@ -109,8 +139,6 @@ export function FinancialReports({ userRole }: FinancialReportsProps) {
         summary: summaryStats,
         generatedAt: new Date().toISOString(),
       }
-
-      await dbManager.saveFinancialReport(reportData)
 
       // Create and download PDF (simplified implementation)
       const dataStr = JSON.stringify(reportData, null, 2)

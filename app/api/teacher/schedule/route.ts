@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 
-import { addTeacherScheduleItem, listTeacherSchedule } from "@/lib/teacher-service";
+import {
+  addTeacherScheduleItem,
+  listTeacherSchedule,
+  type ScheduleType,
+} from "@/lib/teacher-service";
 
 export const dynamic = "force-dynamic";
 
@@ -35,9 +39,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "location is required." }, { status: 400 });
     }
 
+    const normalizedType = type.trim().toLowerCase() as ScheduleType;
+    const allowedTypes: ScheduleType[] = ["lesson", "meeting", "duty", "event"];
+    if (!allowedTypes.includes(normalizedType)) {
+      return NextResponse.json({ error: "type is invalid." }, { status: 400 });
+    }
+
     const item = addTeacherScheduleItem({
       title: title.trim(),
-      type: type,
+      type: normalizedType,
       startTime,
       endTime,
       location: location.trim(),

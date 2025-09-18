@@ -80,13 +80,15 @@ export function SystemStatusIndicator({ className }: SystemStatusIndicatorProps)
           {Object.entries(systemStatus).map(([key, value]) => {
             if (key === "lastUpdated") return null
 
+            const statusValue = typeof value === "string" ? value : "unknown"
+
             return (
               <div key={key} className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  {getStatusIcon(value)}
+                  {getStatusIcon(statusValue)}
                   <span className="text-sm capitalize">{key.replace(/([A-Z])/g, " $1").trim()}</span>
                 </div>
-                {getStatusBadge(value)}
+                {getStatusBadge(statusValue)}
               </div>
             )
           })}

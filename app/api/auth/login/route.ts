@@ -22,7 +22,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify password
-    const isValidPassword = await verifyPassword(password, user.passwordHash)
+    const storedHash = user.passwordHash ?? ""
+    if (!storedHash) {
+      return NextResponse.json({ error: "Invalid credentials" }, { status: 401 })
+    }
+
+    const isValidPassword = await verifyPassword(password, storedHash)
     if (!isValidPassword) {
       return NextResponse.json({ error: "Invalid credentials" }, { status: 401 })
     }

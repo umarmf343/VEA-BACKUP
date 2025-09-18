@@ -103,14 +103,16 @@ export function AcademicAnalytics({ userRole }: AcademicAnalyticsProps) {
   const handleDownload = async () => {
     try {
       const reportData = {
+        title: `Academic analytics - ${selectedTerm}`,
         term: selectedTerm,
-        class: selectedClass,
+        classId: selectedClass,
+        summary: `Performance snapshot for ${selectedClass} (${selectedTerm}).`,
         classPerformance,
         subjectPerformance,
         termComparison,
         topPerformers,
+        performanceRadarData,
         summaryStats,
-        generatedAt: new Date().toISOString(),
       }
 
       await dbManager.saveAnalyticsReport(reportData)
