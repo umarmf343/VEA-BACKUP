@@ -1,0 +1,6 @@
+export * as userRepository from "./users"
+export * as studentRepository from "./students"
+export * as classRepository from "./classes"
+export * as assignmentRepository from "./assignments"
+export * as paymentRepository from "./payments"
+export * as auditLogRepository from "./audit-logs"

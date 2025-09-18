@@ -1,0 +1,193 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  TEACHER
+  PARENT
+  ACCOUNTANT
+  LIBRARIAN
+  STUDENT
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum ClassStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum AssignmentStatus {
+  ACTIVE
+  CLOSED
+}
+
+enum SubmissionStatus {
+  PENDING
+  SUBMITTED
+  GRADED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+}
+
+enum StudentPaymentStatus {
+  PAID
+  PENDING
+  OVERDUE
+}
+
+enum StudentStatus {
+  ACTIVE
+  INACTIVE
+}
+
+model User {
+  id           String      @id @default(uuid())
+  email        String      @unique
+  name         String
+  role         UserRole
+  passwordHash String?
+  status       UserStatus  @default(ACTIVE)
+  metadata     Json?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  students     Student[]
+  classes      Class[]     @relation("ClassTeacher")
+  assignments  Assignment[] @relation("AssignmentTeacher")
+  auditLogs    AuditLog[]  @relation("AuditActor")
+}
+
+model Class {
+  id          String     @id @default(uuid())
+  name        String
+  level       String?
+  section     String?
+  capacity    Int?
+  status      ClassStatus @default(ACTIVE)
+  subjects    Json?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  teacherId   String?
+  teacher     User?      @relation("ClassTeacher", fields: [teacherId], references: [id])
+  students    Student[]
+  assignments Assignment[]
+}
+
+model Student {
+  id             String                @id @default(uuid())
+  userId         String?
+  user           User?                 @relation(fields: [userId], references: [id])
+  name           String
+  email          String
+  classId        String?
+  class          Class?                @relation(fields: [classId], references: [id])
+  section        String?
+  admissionNumber String               @unique
+  parentName     String?
+  parentEmail    String?
+  paymentStatus  StudentPaymentStatus  @default(PENDING)
+  status         StudentStatus         @default(ACTIVE)
+  dateOfBirth    DateTime?
+  address        String?
+  phone          String?
+  guardianPhone  String?
+  bloodGroup     String?
+  admissionDate  DateTime?
+  subjects       Json?
+  attendance     Json?
+  grades         Json?
+  photoUrl       String?
+  metadata       Json?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  payments       Payment[]
+  submissions    AssignmentSubmission[]
+}
+
+model Assignment {
+  id          String           @id @default(uuid())
+  title       String
+  description String
+  subject     String
+  classId     String
+  class       Class            @relation(fields: [classId], references: [id])
+  teacherId   String
+  teacher     User             @relation("AssignmentTeacher", fields: [teacherId], references: [id])
+  dueDate     DateTime
+  status      AssignmentStatus @default(ACTIVE)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  submissions AssignmentSubmission[]
+}
+
+model AssignmentSubmission {
+  id           String           @id @default(uuid())
+  assignmentId String
+  assignment   Assignment       @relation(fields: [assignmentId], references: [id])
+  studentId    String
+  student      Student          @relation(fields: [studentId], references: [id])
+  files        String[]         @default([])
+  status       SubmissionStatus @default(PENDING)
+  submittedAt  DateTime?
+  grade        String?
+  feedback     String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+}
+
+model Payment {
+  id          String        @id @default(uuid())
+  studentId   String
+  student     Student       @relation(fields: [studentId], references: [id])
+  amount      Decimal       @db.Decimal(12, 2)
+  status      PaymentStatus @default(PENDING)
+  method      String
+  reference   String        @unique
+  term        String
+  description String?
+  paidAt      DateTime?
+  metadata    Json?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  receipts    Receipt[]
+}
+
+model Receipt {
+  id         String   @id @default(uuid())
+  paymentId  String
+  payment    Payment  @relation(fields: [paymentId], references: [id])
+  issuedTo   String
+  issuedAt   DateTime @default(now())
+  amount     Decimal  @db.Decimal(12, 2)
+  items      Json
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  actorId   String?
+  actor     User?    @relation("AuditActor", fields: [actorId], references: [id])
+  action    String
+  entity    String
+  entityId  String?
+  details   Json?
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([createdAt])
+}

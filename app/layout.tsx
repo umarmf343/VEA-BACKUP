@@ -12,6 +12,8 @@ import "./globals.css";
 import { Inter } from "next/font/google";
 import type { ReactNode } from "react";
 
+import { QueryProvider } from "@/components/providers/query-provider";
+
 const inter = Inter({
   subsets: ["latin"],
   display: "swap",
@@ -47,9 +49,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         </header>
 
         {/* Main Content */}
-        <main id="content" role="main" className="container py-6">
-          {children}
-        </main>
+        <QueryProvider>
+          <main id="content" role="main" className="container py-6">
+            {children}
+          </main>
+        </QueryProvider>
 
         {/* Footer */}
         <footer role="contentinfo" className="border-t">

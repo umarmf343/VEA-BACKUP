@@ -8,61 +8,36 @@
 // - Optional filter: /api/payments?status=pending|paid|failed
 
 import { NextResponse } from "next/server";
+import { PaymentStatus } from "@prisma/client";
 
-type Status = "pending" | "paid" | "failed";
-
-export interface Payment {
-  id: string;
-  studentId: string;
-  amount: number;
-  status: Status;
-  createdAt: string; // ISO
-  reference?: string;
-}
-
-/** Keep a dev-safe, hot-reload-friendly in-memory store */
-function ensureDB(): Payment[] {
-  const g = globalThis as unknown as { _PAYMENTS?: Payment[] };
-  if (!g._PAYMENTS) {
-    g._PAYMENTS = [
-      {
-        id: "pmt_001",
-        studentId: "STU-1001",
-        amount: 15000,
-        status: "pending",
-        createdAt: new Date().toISOString(),
-        reference: "REF-001",
-      },
-      {
-        id: "pmt_002",
-        studentId: "STU-1002",
-        amount: 32000,
-        status: "paid",
-        createdAt: new Date(Date.now() - 86_400_000).toISOString(),
-        reference: "REF-002",
-      },
-      {
-        id: "pmt_003",
-        studentId: "STU-1003",
-        amount: 25000,
-        status: "failed",
-        createdAt: new Date(Date.now() - 2 * 86_400_000).toISOString(),
-        reference: "REF-003",
-      },
-    ];
-  }
-  return g._PAYMENTS!;
-}
+import { paymentRepository } from "@/lib/repositories";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
-  const status = url.searchParams.get("status") as Status | null;
+  const status = url.searchParams.get("status");
 
-  const db = ensureDB();
-  const items = status ? db.filter((p) => p.status === status) : db;
+  const payments = await paymentRepository.listPayments();
+  const normalised = payments
+    .filter((payment) =>
+      status
+        ? payment.status === status.toUpperCase()
+            ? true
+            : payment.status === (status === "paid"
+                ? PaymentStatus.PAID
+                : status === "failed"
+                  ? PaymentStatus.FAILED
+                  : PaymentStatus.PENDING)
+        : true,
+    )
+    .map((payment) => ({
+      id: payment.id,
+      studentId: payment.studentId,
+      amount: Number(payment.amount),
+      status: payment.status === "PAID" ? "paid" : payment.status === "FAILED" ? "failed" : "pending",
+      createdAt: payment.createdAt.toISOString(),
+      reference: payment.reference,
+    }))
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 
-  // Sort newest first
-  items.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
-
-  return NextResponse.json(items, { status: 200 });
+  return NextResponse.json(normalised, { status: 200 });
 }

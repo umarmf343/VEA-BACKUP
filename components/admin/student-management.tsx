@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -21,36 +21,24 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Users, Plus, Search, Edit, Trash2, Eye, User, Calendar, CreditCard, Loader2 } from "lucide-react"
-import { dbManager } from "@/lib/database-manager"
-import { safeStorage } from "@/lib/safe-storage"
+import {
+  useCreateStudent,
+  useDeleteStudent,
+  useStudents,
+  useUpdateStudent,
+  type StudentPayload,
+} from "@/hooks/use-students"
 
-interface Student {
-  id: string
-  name: string
-  email: string
+type Student = StudentPayload & {
   class: string
-  section: string
-  admissionNumber: string
-  parentName: string
-  parentEmail: string
-  paymentStatus: "paid" | "pending" | "overdue"
-  status: "active" | "inactive"
-  dateOfBirth: string
-  address: string
-  phone: string
-  guardianPhone: string
-  bloodGroup: string
-  admissionDate: string
-  subjects: string[]
   attendance: { present: number; total: number }
   grades: { subject: string; ca1: number; ca2: number; exam: number; total: number; grade: string }[]
-  photoUrl?: string
+  admissionDate: string | null
+  dateOfBirth: string | null
+  photoUrl?: string | null
 }
 
 export function StudentManagement() {
-  const [students, setStudents] = useState<Student[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedClass, setSelectedClass] = useState("all")
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
@@ -59,35 +47,14 @@ export function StudentManagement() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [editingStudent, setEditingStudent] = useState<Student | null>(null)
 
-  useEffect(() => {
-    loadStudents()
-
-    // Real-time event listeners
-    const handleStudentUpdate = () => loadStudents()
-    dbManager.on("studentUpdated", handleStudentUpdate)
-    dbManager.on("studentCreated", handleStudentUpdate)
-    dbManager.on("studentDeleted", handleStudentUpdate)
-
-    return () => {
-      dbManager.off("studentUpdated", handleStudentUpdate)
-      dbManager.off("studentCreated", handleStudentUpdate)
-      dbManager.off("studentDeleted", handleStudentUpdate)
-    }
-  }, [])
-
-  const loadStudents = async () => {
-    try {
-      setLoading(true)
-      setError(null)
-      const studentsData = await dbManager.getStudents()
-      setStudents(studentsData)
-    } catch (err) {
-      setError("Failed to load students")
-      console.error("Error loading students:", err)
-    } finally {
-      setLoading(false)
-    }
-  }
+  const {
+    data: students = [],
+    isLoading,
+    error,
+  } = useStudents(selectedClass === "all" ? undefined : selectedClass)
+  const createStudentMutation = useCreateStudent()
+  const updateStudentMutation = useUpdateStudent()
+  const deleteStudentMutation = useDeleteStudent()
 
   const filteredStudents = students.filter((student) => {
     const matchesSearch =
@@ -121,30 +88,18 @@ export function StudentManagement() {
   }
 
   const handleSaveStudent = async (updatedStudent: Student) => {
-    try {
-      await dbManager.updateStudent(updatedStudent.id, updatedStudent)
-      setIsEditDialogOpen(false)
-      setEditingStudent(null)
-      // Data will be updated via event listener
-    } catch (err) {
-      console.error("Error saving student:", err)
-      setError("Failed to save student changes")
-    }
+    await updateStudentMutation.mutateAsync(updatedStudent)
+    setIsEditDialogOpen(false)
+    setEditingStudent(null)
   }
 
   const handleDeleteStudent = async (studentId: string) => {
     if (confirm("Are you sure you want to delete this student?")) {
-      try {
-        await dbManager.deleteStudent(studentId)
-        // Data will be updated via event listener
-      } catch (err) {
-        console.error("Error deleting student:", err)
-        setError("Failed to delete student")
-      }
+      await deleteStudentMutation.mutateAsync(studentId)
     }
   }
 
-  if (loading) {
+  if (isLoading) {
     return (
       <Card className="border-[#2d682d]/20">
         <CardContent className="flex items-center justify-center py-8">
@@ -155,13 +110,15 @@ export function StudentManagement() {
     )
   }
 
-  if (error) {
+  const errorMessage = error instanceof Error ? error.message : error ? "Failed to load students" : null
+
+  if (errorMessage) {
     return (
       <Card className="border-red-200">
         <CardContent className="flex items-center justify-center py-8">
           <div className="text-center">
-            <p className="text-red-600 mb-2">{error}</p>
-            <Button onClick={loadStudents} variant="outline">
+            <p className="text-red-600 mb-2">{errorMessage}</p>
+            <Button onClick={() => window.location.reload()} variant="outline">
               Try Again
             </Button>
           </div>
@@ -579,30 +536,19 @@ function AddStudentForm({ onClose }: { onClose: () => void }) {
     parentEmail: "",
   })
   const [saving, setSaving] = useState(false)
+  const createStudent = useCreateStudent()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setSaving(true)
 
     try {
-      const newStudent = {
+      await createStudent.mutateAsync({
         ...formData,
-        id: Date.now().toString(),
         admissionNumber: `VEA${new Date().getFullYear()}${String(Date.now()).slice(-3)}`,
-        paymentStatus: "pending" as const,
-        status: "active" as const,
-        dateOfBirth: "",
-        address: "",
-        phone: "",
-        guardianPhone: "",
-        bloodGroup: "",
-        admissionDate: new Date().toISOString().split("T")[0],
-        subjects: [],
-        attendance: { present: 0, total: 0 },
-        grades: [],
-      }
-
-      await dbManager.createStudent(newStudent)
+        paymentStatus: "pending",
+        status: "active",
+      })
       onClose()
     } catch (err) {
       console.error("Error adding student:", err)
@@ -749,11 +695,6 @@ function EditStudentForm({
       const result = e.target?.result as string
       setPhotoPreview(result)
       updateFormData("photoUrl", result)
-
-      // Save to safeStorage for persistence
-      const studentPhotos = JSON.parse(safeStorage.getItem("studentPhotos") || "{}")
-      studentPhotos[student.id] = result
-      safeStorage.setItem("studentPhotos", JSON.stringify(studentPhotos))
     }
     reader.readAsDataURL(file)
   }

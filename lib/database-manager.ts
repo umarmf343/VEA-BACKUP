@@ -1,6 +1,31 @@
 import { randomUUID } from "crypto"
 
+import type {
+  Assignment as PrismaAssignment,
+  AssignmentSubmission as PrismaAssignmentSubmission,
+  Class as PrismaClass,
+  Payment as PrismaPayment,
+  Receipt as PrismaReceipt,
+  Student as PrismaStudent,
+  User as PrismaUser,
+} from "@prisma/client"
+import {
+  StudentPaymentStatus as PrismaStudentPaymentStatus,
+  StudentStatus as PrismaStudentStatus,
+  SubmissionStatus,
+  UserRole,
+  UserStatus,
+} from "@prisma/client"
+
 import { safeStorage } from "./safe-storage"
+import {
+  assignmentRepository,
+  auditLogRepository,
+  classRepository,
+  paymentRepository,
+  studentRepository,
+  userRepository,
+} from "./repositories"
 
 export type PaymentStatus = "pending" | "paid" | "failed"
 export type StudentPaymentStatus = "paid" | "pending" | "overdue"
@@ -283,6 +308,190 @@ function clone<T>(value: T): T {
     return structuredClone(value)
   }
   return JSON.parse(JSON.stringify(value))
+}
+
+function mapUserEntity(user: PrismaUser): UserRecord {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role.toLowerCase(),
+    status: user.status === UserStatus.INACTIVE ? "inactive" : "active",
+    createdAt: user.createdAt.toISOString(),
+    updatedAt: user.updatedAt.toISOString(),
+    passwordHash: user.passwordHash ?? undefined,
+    studentIds: Array.isArray((user.metadata as any)?.studentIds)
+      ? ((user.metadata as any).studentIds as string[])
+      : undefined,
+    subjects: Array.isArray((user.metadata as any)?.subjects)
+      ? ((user.metadata as any).subjects as string[])
+      : undefined,
+  }
+}
+
+function parseUserRole(role: string): UserRole {
+  const candidate = role?.toUpperCase?.()
+  return (Object.values(UserRole) as string[]).includes(candidate)
+    ? (candidate as UserRole)
+    : UserRole.STUDENT
+}
+
+function parseStringArray(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item))
+  }
+  return []
+}
+
+function parseAttendance(value: unknown): { present: number; total: number } {
+  if (value && typeof value === "object") {
+    const { present, total } = value as Record<string, unknown>
+    const presentNum = typeof present === "number" ? present : Number(present ?? 0)
+    const totalNum = typeof total === "number" ? total : Number(total ?? 0)
+    return { present: presentNum, total: totalNum }
+  }
+  return { present: 0, total: 0 }
+}
+
+function parseGrades(value: unknown): StudentGrade[] {
+  if (Array.isArray(value)) {
+    return (value as any[]).map((grade) => ({
+      subject: String(grade?.subject ?? ""),
+      ca1: Number(grade?.ca1 ?? 0),
+      ca2: Number(grade?.ca2 ?? 0),
+      exam: Number(grade?.exam ?? 0),
+      total: Number(grade?.total ?? 0),
+      grade: String(grade?.grade ?? ""),
+    }))
+  }
+  return []
+}
+
+function mapStudentEntity(student: PrismaStudent & { class?: PrismaClass | null }): Student {
+  return {
+    id: student.id,
+    name: student.name,
+    email: student.email,
+    class: student.class?.name ?? student.classId ?? "",
+    section: student.section ?? "",
+    admissionNumber: student.admissionNumber,
+    parentName: student.parentName ?? "",
+    parentEmail: student.parentEmail ?? "",
+    paymentStatus:
+      student.paymentStatus === PrismaStudentPaymentStatus.PAID
+        ? "paid"
+        : student.paymentStatus === PrismaStudentPaymentStatus.OVERDUE
+          ? "overdue"
+          : "pending",
+    status: student.status === PrismaStudentStatus.INACTIVE ? "inactive" : "active",
+    dateOfBirth: student.dateOfBirth ? student.dateOfBirth.toISOString() : "",
+    address: student.address ?? "",
+    phone: student.phone ?? "",
+    guardianPhone: student.guardianPhone ?? "",
+    bloodGroup: student.bloodGroup ?? "",
+    admissionDate: student.admissionDate ? student.admissionDate.toISOString() : "",
+    subjects: parseStringArray(student.subjects),
+    attendance: parseAttendance(student.attendance),
+    grades: parseGrades(student.grades),
+    photoUrl: student.photoUrl ?? undefined,
+  }
+}
+
+function mapClassEntity(classEntity: PrismaClass): ClassRecord {
+  return {
+    id: classEntity.id,
+    name: classEntity.name,
+    level: classEntity.level ?? "",
+    capacity: classEntity.capacity ?? 0,
+    classTeacherId: classEntity.teacherId ?? undefined,
+    subjects: parseStringArray(classEntity.subjects),
+    status: classEntity.status === "INACTIVE" ? "inactive" : "active",
+  }
+}
+
+function mapAssignmentStatus(status: string): Assignment["status"] {
+  return status === "CLOSED" ? "closed" : "active"
+}
+
+function mapSubmissionStatus(status: SubmissionStatus): AssignmentSubmission["status"] {
+  switch (status) {
+    case SubmissionStatus.GRADED:
+      return "graded"
+    case SubmissionStatus.SUBMITTED:
+      return "submitted"
+    default:
+      return "pending"
+  }
+}
+
+function mapAssignmentEntity(
+  assignment: PrismaAssignment & { submissions?: PrismaAssignmentSubmission[] }
+): Assignment {
+  return {
+    id: assignment.id,
+    title: assignment.title,
+    description: assignment.description,
+    subject: assignment.subject,
+    classId: assignment.classId,
+    teacherId: assignment.teacherId,
+    dueDate: assignment.dueDate.toISOString(),
+    status: mapAssignmentStatus(assignment.status),
+    createdAt: assignment.createdAt.toISOString(),
+  }
+}
+
+function mapSubmissionEntity(submission: PrismaAssignmentSubmission): AssignmentSubmission {
+  return {
+    id: submission.id,
+    assignmentId: submission.assignmentId,
+    studentId: submission.studentId,
+    files: submission.files ?? [],
+    status: mapSubmissionStatus(submission.status),
+    submittedAt: submission.submittedAt ? submission.submittedAt.toISOString() : "",
+    grade: submission.grade ?? undefined,
+    feedback: submission.feedback ?? undefined,
+  }
+}
+
+function mapPaymentStatus(status: string): PaymentStatus {
+  switch (status) {
+    case "PAID":
+      return "paid"
+    case "FAILED":
+      return "failed"
+    default:
+      return "pending"
+  }
+}
+
+function mapPaymentEntity(payment: PrismaPayment & { receipts?: PrismaReceipt[] }): Payment {
+  return {
+    id: payment.id,
+    studentId: payment.studentId,
+    amount: Number(payment.amount),
+    status: mapPaymentStatus(payment.status),
+    method: payment.method,
+    date: payment.paidAt ? payment.paidAt.toISOString() : payment.createdAt.toISOString(),
+    reference: payment.reference,
+    description: payment.description ?? undefined,
+    term: payment.term,
+  }
+}
+
+function mapReceiptEntity(receipt: PrismaReceipt): Receipt {
+  return {
+    id: receipt.id,
+    paymentId: receipt.paymentId,
+    issuedTo: receipt.issuedTo,
+    issuedAt: receipt.issuedAt.toISOString(),
+    amount: Number(receipt.amount),
+    items: Array.isArray(receipt.items)
+      ? (receipt.items as Array<{ label: string; amount: number }>).map((item) => ({
+          label: String(item.label),
+          amount: Number(item.amount),
+        }))
+      : [],
+  }
 }
 
 const DEFAULT_DATA: Collections = {
@@ -881,60 +1090,117 @@ export class DatabaseManager {
   }
 
   async getStudents() {
-    return clone(this.getCollection("students"))
+    const students = await studentRepository.listStudents()
+    return students.map((student) => mapStudentEntity(student))
   }
 
-  async createStudent(student: Partial<Student> & Pick<Student, "name" | "email" | "class" | "section" | "admissionNumber" | "parentName" | "parentEmail">) {
-    const newStudent: Student = {
-      id: student.id ?? randomUUID(),
+  private async ensureClassRecord(classValue?: string | null) {
+    if (!classValue) return null
+
+    try {
+      const byId = await classRepository.findClassById(classValue)
+      if (byId) return byId
+    } catch {
+      /* ignore lookup errors */
+    }
+
+    const byName = await classRepository.findClassByName(classValue)
+    if (byName) return byName
+
+    return classRepository.createClass({ name: classValue })
+  }
+
+  async createStudent(
+    student: Partial<Student> &
+      Pick<
+        Student,
+        "name" | "email" | "class" | "section" | "admissionNumber" | "parentName" | "parentEmail"
+      >,
+  ) {
+    const classRecord = await this.ensureClassRecord(student.class)
+
+    const created = await studentRepository.createStudent({
       name: student.name,
       email: student.email,
-      class: student.class,
+      classId: classRecord?.id,
       section: student.section,
       admissionNumber: student.admissionNumber,
       parentName: student.parentName,
       parentEmail: student.parentEmail,
-      paymentStatus: student.paymentStatus ?? "pending",
-      status: student.status ?? "active",
-      dateOfBirth: student.dateOfBirth ?? "2012-01-01",
-      address: student.address ?? "",
-      phone: student.phone ?? "",
-      guardianPhone: student.guardianPhone ?? "",
-      bloodGroup: student.bloodGroup ?? "O+",
-      admissionDate: student.admissionDate ?? new Date().toISOString().slice(0, 10),
-      subjects: student.subjects ? [...student.subjects] : [],
-      attendance: student.attendance ?? { present: 0, total: 0 },
-      grades: student.grades ? [...student.grades] : [],
+      paymentStatus:
+        student.paymentStatus === "paid"
+          ? PrismaStudentPaymentStatus.PAID
+          : student.paymentStatus === "overdue"
+            ? PrismaStudentPaymentStatus.OVERDUE
+            : PrismaStudentPaymentStatus.PENDING,
+      status: student.status === "inactive" ? PrismaStudentStatus.INACTIVE : PrismaStudentStatus.ACTIVE,
+      dateOfBirth: student.dateOfBirth,
+      address: student.address,
+      phone: student.phone,
+      guardianPhone: student.guardianPhone,
+      bloodGroup: student.bloodGroup,
+      admissionDate: student.admissionDate,
+      subjects: student.subjects,
+      attendance: student.attendance,
+      grades: student.grades,
       photoUrl: student.photoUrl,
-    }
+    })
 
-    this.updateCollection("students", (current) => [...current, newStudent])
-    this.emit("studentCreated", newStudent)
-    return newStudent
+    const mapped = mapStudentEntity(created)
+    this.emit("studentCreated", mapped)
+    return mapped
   }
 
   async updateStudent(studentId: string, updates: Partial<Student>) {
-    let updated: Student | null = null
-
-    this.updateCollection("students", (current) =>
-      current.map((student) => {
-        if (student.id !== studentId) return student
-        updated = { ...student, ...updates }
-        return updated
-      }),
-    )
-
-    if (!updated) {
-      throw new Error(`Student with id ${studentId} not found`)
+    let classId: string | undefined | null
+    if (updates.class !== undefined) {
+      const classRecord = await this.ensureClassRecord(updates.class)
+      classId = classRecord?.id ?? null
     }
 
-    this.emit("studentUpdated", updated)
-    return updated
+    const updated = await studentRepository.updateStudent(studentId, {
+      name: updates.name,
+      email: updates.email,
+      classId,
+      section: updates.section,
+      admissionNumber: updates.admissionNumber,
+      parentName: updates.parentName,
+      parentEmail: updates.parentEmail,
+      paymentStatus:
+        updates.paymentStatus === undefined
+          ? undefined
+          : updates.paymentStatus === "paid"
+            ? PrismaStudentPaymentStatus.PAID
+            : updates.paymentStatus === "overdue"
+              ? PrismaStudentPaymentStatus.OVERDUE
+              : PrismaStudentPaymentStatus.PENDING,
+      status:
+        updates.status === undefined
+          ? undefined
+          : updates.status === "inactive"
+            ? PrismaStudentStatus.INACTIVE
+            : PrismaStudentStatus.ACTIVE,
+      dateOfBirth: updates.dateOfBirth,
+      address: updates.address,
+      phone: updates.phone,
+      guardianPhone: updates.guardianPhone,
+      bloodGroup: updates.bloodGroup,
+      admissionDate: updates.admissionDate,
+      subjects: updates.subjects,
+      attendance: updates.attendance,
+      grades: updates.grades,
+      photoUrl: updates.photoUrl,
+    })
+
+    const mapped = mapStudentEntity(updated)
+    this.emit("studentUpdated", mapped)
+    return mapped
   }
 
   async deleteStudent(studentId: string) {
-    this.updateCollection("students", (current) => current.filter((student) => student.id !== studentId))
+    const deleted = await studentRepository.deleteStudent(studentId)
     this.emit("studentDeleted", { id: studentId })
+    return mapStudentEntity(deleted)
   }
 
   async getStudentsByClass(classId: string) {
@@ -942,98 +1208,106 @@ export class DatabaseManager {
       return this.getStudents()
     }
 
-    const students = await this.getStudents()
-    return students.filter((student) => student.class === classId)
+    const classRecord = await this.ensureClassRecord(classId)
+    if (!classRecord) return []
+
+    const students = await studentRepository.findStudentsByClass(classRecord.id)
+    return students.map((student) => mapStudentEntity(student))
   }
 
   async getClasses() {
-    return clone(this.getCollection("classes"))
+    const classes = await classRepository.listClasses()
+    return classes.map((klass) => mapClassEntity(klass))
   }
 
   async createClass(data: Omit<ClassRecord, "id"> & { id?: string }) {
-    const newClass: ClassRecord = {
-      id: data.id ?? randomUUID(),
+    const created = await classRepository.createClass({
       name: data.name,
       level: data.level,
+      section: null,
       capacity: data.capacity,
-      classTeacherId: data.classTeacherId,
-      subjects: [...data.subjects],
-      status: data.status,
-    }
+      status: data.status === "inactive" ? "INACTIVE" : "ACTIVE",
+      subjects: data.subjects,
+      teacherId: data.classTeacherId,
+    })
 
-    this.updateCollection("classes", (current) => [...current, newClass])
-    return newClass
+    return mapClassEntity(created)
   }
 
   async updateClass(classId: string, updates: Partial<ClassRecord>) {
-    let updated: ClassRecord | null = null
-    this.updateCollection("classes", (current) =>
-      current.map((klass) => {
-        if (klass.id !== classId) return klass
-        updated = { ...klass, ...updates }
-        return updated
-      }),
-    )
+    const updated = await classRepository.updateClass(classId, {
+      name: updates.name,
+      level: updates.level,
+      capacity: updates.capacity,
+      status: updates.status === undefined ? undefined : updates.status === "inactive" ? "INACTIVE" : "ACTIVE",
+      subjects: updates.subjects,
+      teacherId: updates.classTeacherId,
+    })
 
-    if (!updated) {
-      throw new Error(`Class with id ${classId} not found`)
-    }
-
-    return updated
+    return mapClassEntity(updated)
   }
 
   async getAssignments(filters: { teacherId?: string; studentId?: string; classId?: string } = {}) {
-    const assignments = clone(this.getCollection("assignments"))
+    const searchFilters: { classId?: string; teacherId?: string } = {}
 
-    if (!filters.teacherId && !filters.studentId && !filters.classId) {
-      return assignments
+    if (filters.classId) {
+      const classRecord = await this.ensureClassRecord(filters.classId)
+      if (!classRecord) return []
+      searchFilters.classId = classRecord.id
     }
 
-    return assignments.filter((assignment) => {
-      if (filters.teacherId && assignment.teacherId !== filters.teacherId) return false
-      if (filters.classId && assignment.classId !== filters.classId) return false
-      if (filters.studentId) {
-        const students = this.getCollection("students")
-        const student = students.find((s) => s.id === filters.studentId)
-        if (student && assignment.classId !== student.class) {
-          return false
-        }
+    if (filters.teacherId) {
+      searchFilters.teacherId = filters.teacherId
+    }
+
+    if (filters.studentId) {
+      const student = await studentRepository.findStudentById(filters.studentId)
+      if (!student?.classId) {
+        return []
       }
-      return true
-    })
+      searchFilters.classId = student.classId
+    }
+
+    const assignments = await assignmentRepository.listAssignments(searchFilters)
+    return assignments.map((assignment) => mapAssignmentEntity(assignment))
   }
 
   async createAssignment(data: Omit<Assignment, "id" | "createdAt"> & { id?: string }) {
-    const assignment: Assignment = {
-      id: data.id ?? randomUUID(),
+    const classRecord = await this.ensureClassRecord(data.classId)
+    if (!classRecord) {
+      throw new Error("Class not found for assignment")
+    }
+
+    const created = await assignmentRepository.createAssignment({
       title: data.title,
       description: data.description,
       subject: data.subject,
-      classId: data.classId,
+      classId: classRecord.id,
       teacherId: data.teacherId,
       dueDate: data.dueDate,
-      status: data.status,
-      createdAt: new Date().toISOString(),
-    }
+      status: data.status === "closed" ? "CLOSED" : "ACTIVE",
+    })
 
-    this.updateCollection("assignments", (current) => [...current, assignment])
-    return assignment
+    return mapAssignmentEntity(created)
   }
 
   async createAssignmentSubmission(data: Omit<AssignmentSubmission, "id" | "submittedAt"> & { id?: string }) {
-    const submission: AssignmentSubmission = {
-      id: data.id ?? randomUUID(),
+    const created = await assignmentRepository.createSubmission({
       assignmentId: data.assignmentId,
       studentId: data.studentId,
-      files: [...data.files],
-      status: data.status ?? "submitted",
+      files: data.files,
+      status:
+        data.status === "graded"
+          ? SubmissionStatus.GRADED
+          : data.status === "submitted"
+            ? SubmissionStatus.SUBMITTED
+            : SubmissionStatus.PENDING,
       submittedAt: new Date().toISOString(),
       grade: data.grade,
       feedback: data.feedback,
-    }
+    })
 
-    this.updateCollection("assignmentSubmissions", (current) => [...current, submission])
-    return submission
+    return mapSubmissionEntity(created)
   }
 
   async getBooks() {
@@ -1121,11 +1395,13 @@ export class DatabaseManager {
   }
 
   async getPayments() {
-    return clone(this.getCollection("payments"))
+    const payments = await paymentRepository.listPayments()
+    return payments.map((payment) => mapPaymentEntity(payment as unknown as PrismaPayment))
   }
 
   async getReceipts() {
-    return clone(this.getCollection("receipts"))
+    const receipts = await paymentRepository.listReceipts()
+    return receipts.map((receipt) => mapReceiptEntity(receipt as unknown as PrismaReceipt))
   }
 
   async getFeeStructure() {
@@ -1162,22 +1438,19 @@ export class DatabaseManager {
   }
 
   async generateReceipt(payment: Payment) {
-    const receipt: Receipt = {
-      id: randomUUID(),
+    const receipt = await paymentRepository.createReceipt({
       paymentId: payment.id,
       issuedTo: payment.studentId,
-      issuedAt: new Date().toISOString(),
       amount: payment.amount,
       items: [
         { label: "Tuition", amount: Math.round(payment.amount * 0.7) },
         { label: "Development", amount: Math.round(payment.amount * 0.2) },
         { label: "Miscellaneous", amount: payment.amount - Math.round(payment.amount * 0.9) },
       ],
-    }
+    })
 
-    this.updateCollection("receipts", (current) => [...current, receipt])
-    this.notifyCollection("receipts")
-    return receipt
+    this.emit("paymentProcessed", payment)
+    return mapReceiptEntity(receipt as unknown as PrismaReceipt)
   }
 
   async generateFinancialReport(type: string, payments: Payment[]) {
@@ -1200,20 +1473,18 @@ export class DatabaseManager {
   }
 
   async savePayment(data: Omit<Payment, "id" | "reference" | "date"> & { id?: string }) {
-    const payment: Payment = {
-      id: data.id ?? randomUUID(),
+    const created = await paymentRepository.createPayment({
       studentId: data.studentId,
       amount: data.amount,
-      status: data.status ?? "paid",
+      status: data.status === "failed" ? "FAILED" : data.status === "pending" ? "PENDING" : "PAID",
       method: data.method,
-      date: new Date().toISOString(),
-      reference: `PAY-${Date.now()}`,
-      description: data.description,
+      reference: data.id ?? `PAY-${Date.now()}`,
       term: data.term,
-    }
+      description: data.description,
+      paidAt: new Date().toISOString(),
+    })
 
-    this.updateCollection("payments", (current) => [...current, payment])
-    this.notifyCollection("payments")
+    const payment = mapPaymentEntity(created as unknown as PrismaPayment)
     this.emit("paymentProcessed", payment)
     this.emit("financialDataUpdated", await this.getFinancialSummary("current"))
     return payment
@@ -1515,56 +1786,74 @@ export class DatabaseManager {
   }
 
   async getUser(userId: string) {
-    return clone(this.getCollection("users").find((user) => user.id === userId) ?? null)
+    const user = await userRepository.findUserById(userId)
+    return user ? mapUserEntity(user) : null
   }
 
   async getUsersByRole(role: string) {
-    return clone(this.getCollection("users").filter((user) => user.role === role))
+    const normalisedRole = parseUserRole(role)
+    const users = await userRepository.listUsers(normalisedRole)
+    return users.map(mapUserEntity)
   }
 
   async getAllUsers() {
-    return clone(this.getCollection("users"))
+    const users = await userRepository.listUsers()
+    return users.map(mapUserEntity)
   }
 
   async createUser(user: Omit<UserRecord, "id" | "createdAt"> & { id?: string }) {
-    const newUser: UserRecord = {
-      id: user.id ?? randomUUID(),
+    const created = await userRepository.createUser({
       name: user.name,
       email: user.email,
-      role: user.role,
-      status: user.status ?? "active",
-      createdAt: new Date().toISOString(),
-      updatedAt: user.updatedAt,
+      role: parseUserRole(user.role),
+      status: user.status === "inactive" ? UserStatus.INACTIVE : UserStatus.ACTIVE,
       passwordHash: user.passwordHash,
-      studentIds: user.studentIds?.slice(),
-      subjects: user.subjects?.slice(),
-    }
+      metadata: {
+        studentIds: user.studentIds,
+        subjects: user.subjects,
+      },
+    })
 
-    this.updateCollection("users", (current) => [...current, newUser])
-    return newUser
+    await auditLogRepository.recordAuditLog({
+      action: "user.created",
+      entity: "user",
+      entityId: created.id,
+      details: { email: created.email, role: created.role },
+    })
+
+    this.emit("academicDataUpdated", {})
+    return mapUserEntity(created)
   }
 
   async updateUser(userId: string, updates: Partial<UserRecord>) {
-    let updated: UserRecord | null = null
-    this.updateCollection("users", (current) =>
-      current.map((user) => {
-        if (user.id !== userId) return user
-        updated = {
-          ...user,
-          ...updates,
-          studentIds: updates.studentIds?.slice() ?? user.studentIds,
-          subjects: updates.subjects?.slice() ?? user.subjects,
-          updatedAt: new Date().toISOString(),
-        }
-        return updated
-      }),
-    )
+    const updated = await userRepository.updateUser(userId, {
+      name: updates.name,
+      email: updates.email,
+      role: updates.role ? parseUserRole(updates.role) : undefined,
+      status: updates.status
+        ? updates.status === "inactive"
+          ? UserStatus.INACTIVE
+          : UserStatus.ACTIVE
+        : undefined,
+      passwordHash: updates.passwordHash,
+      metadata:
+        updates.studentIds || updates.subjects
+          ? {
+              studentIds: updates.studentIds,
+              subjects: updates.subjects,
+            }
+          : undefined,
+    })
 
-    if (!updated) {
-      throw new Error(`User with id ${userId} not found`)
-    }
+    await auditLogRepository.recordAuditLog({
+      action: "user.updated",
+      entity: "user",
+      entityId: userId,
+      details: updates,
+    })
 
-    return updated
+    this.emit("academicDataUpdated", {})
+    return mapUserEntity(updated)
   }
 }
 
