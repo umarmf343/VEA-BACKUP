@@ -9,12 +9,20 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 export function middleware(req: NextRequest) {
-  const res = NextResponse.next();
+  const requestHeaders = new Headers(req.headers);
 
   // Attach a lightweight request ID for tracing
   const rid =
     (typeof crypto !== "undefined" && "randomUUID" in crypto && crypto.randomUUID()) ||
     Math.random().toString(36).slice(2);
+  requestHeaders.set("x-request-id", rid);
+
+  const res = NextResponse.next({
+    request: {
+      headers: requestHeaders,
+    },
+  });
+
   res.headers.set("x-request-id", rid);
 
   const { pathname } = req.nextUrl;
