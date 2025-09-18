@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server"
 
-import { verifyToken } from "./security"
+import { AuthError, authService } from "./auth-service"
 
 export type AuthContext = {
   userId: string
@@ -9,13 +9,6 @@ export type AuthContext = {
 }
 
 export type HttpError = { status: number; message: string }
-
-type TokenPayload = {
-  userId?: string
-  id?: string
-  role?: string
-  name?: string
-}
 
 export function isHttpError(error: unknown): error is HttpError {
   return (
@@ -36,22 +29,16 @@ export function requireAuth(request: NextRequest): AuthContext {
   const token = authHeader.substring(7)
 
   try {
-    const decoded = verifyToken(token) as TokenPayload
-    const role = decoded.role || ""
-    const userId = decoded.userId || decoded.id || ""
-
-    if (!role || !userId) {
-      throw { status: 403, message: "Insufficient permissions" }
-    }
+    const decoded = authService.verifyAccessToken(token)
 
     return {
-      userId,
-      role,
+      userId: decoded.sub,
+      role: decoded.role,
       name: decoded.name,
     }
   } catch (error) {
-    if (isHttpError(error)) {
-      throw error
+    if (error instanceof AuthError) {
+      throw { status: error.status, message: error.message }
     }
     throw { status: 401, message: "Unauthorized" }
   }

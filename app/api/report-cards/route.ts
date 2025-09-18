@@ -9,7 +9,7 @@ import {
 } from "@/lib/report-card-service"
 import type { ReportCardStatus } from "@/lib/report-card-types"
 import { requireAuth, isHttpError } from "@/lib/api-auth"
-import { hasPermission } from "@/lib/security"
+import { authService } from "@/lib/auth-service"
 
 export const runtime = "nodejs"
 
@@ -35,11 +35,11 @@ export async function GET(request: NextRequest) {
         )
       }
 
-      if (actor.role === "Student" && actor.userId !== studentId) {
+      if (actor.role === "student" && actor.userId !== studentId) {
         return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 })
       }
 
-      if (actor.role !== "Student" && !hasPermission(actor.role, ["Teacher", "Admin", "Super Admin"])) {
+      if (actor.role !== "student" && !authService.hasPermission(actor.role, ["teacher", "admin", "super_admin"])) {
         return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 })
       }
 
@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ data: reportCard })
     }
 
-    if (!hasPermission(actor.role, ["Admin", "Super Admin"])) {
+    if (!authService.hasPermission(actor.role, ["admin", "super_admin"])) {
       return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 })
     }
 
@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
 
     if (body.action === "subject-assessment") {
-      if (!hasPermission(actor.role, ["Teacher", "Admin", "Super Admin"])) {
+      if (!authService.hasPermission(actor.role, ["teacher", "admin", "super_admin"])) {
         return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 })
       }
 
@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Student payload is required" }, { status: 400 })
     }
 
-    if (!hasPermission(actor.role, ["Teacher", "Admin", "Super Admin"])) {
+    if (!authService.hasPermission(actor.role, ["teacher", "admin", "super_admin"])) {
       return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 })
     }
 
@@ -152,7 +152,7 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json()
 
     if (body.action === "override") {
-      if (!hasPermission(actor.role, ["Admin", "Super Admin"])) {
+      if (!authService.hasPermission(actor.role, ["admin", "super_admin"])) {
         return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 })
       }
 
@@ -175,7 +175,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ data: reportCard })
     }
 
-    if (!hasPermission(actor.role, ["Admin", "Super Admin"])) {
+    if (!authService.hasPermission(actor.role, ["admin", "super_admin"])) {
       return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 })
     }
 

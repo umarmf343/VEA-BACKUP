@@ -1,37 +1,60 @@
-import { describe, it, expect, beforeEach } from "@jest/globals"
-import { validateUser, hashPassword, verifyPassword } from "../lib/auth"
+import { beforeAll, describe, expect, it } from "@jest/globals"
 
-describe("Authentication System", () => {
-  beforeEach(() => {
-    // Reset any mocks or test data
+import { AuthError, authService } from "../lib/auth-service"
+import { dbManager } from "../lib/database-manager"
+
+describe("Auth service", () => {
+  const testEmail = `spec-${Date.now()}@example.com`
+  const testPassword = "TestPassword123!"
+  let registeredUserId: string
+
+  beforeAll(async () => {
+    const registered = await authService.registerUser({
+      name: "Spec User",
+      email: testEmail,
+      password: testPassword,
+      role: "teacher",
+    })
+
+    registeredUserId = registered.id
   })
 
-  it("should validate user credentials correctly", () => {
-    const validUser = {
-      email: "admin@vea.edu.ng",
-      password: "Admin2025!",
-      role: "admin" as const,
-    }
+  it("stores a bcrypt hash for newly registered users", async () => {
+    const userRecord = await dbManager.getUser(registeredUserId)
+    expect(userRecord).toBeTruthy()
+    expect(userRecord?.passwordHash).toBeDefined()
+    expect(userRecord?.passwordHash?.startsWith("$2")).toBe(true)
 
-    expect(validateUser(validUser.email, validUser.password)).toBeTruthy()
+    const matches = await authService.verifyPassword(testPassword, userRecord?.passwordHash ?? "")
+    expect(matches).toBe(true)
   })
 
-  it("should hash passwords securely", async () => {
-    const password = "TestPassword123!"
-    const hashedPassword = await hashPassword(password)
+  it("logs in with valid credentials and returns token pair", async () => {
+    const { user, tokens } = await authService.login(testEmail, testPassword)
 
-    expect(hashedPassword).not.toBe(password)
-    expect(hashedPassword.length).toBeGreaterThan(50)
+    expect(user.email).toBe(testEmail)
+    expect(tokens.accessToken).toBeTruthy()
+    expect(tokens.refreshToken).toBeTruthy()
+    expect(tokens.accessTokenExpiresAt).toBeTruthy()
+    expect(tokens.refreshTokenExpiresAt).toBeTruthy()
   })
 
-  it("should verify passwords correctly", async () => {
-    const password = "TestPassword123!"
-    const hashedPassword = await hashPassword(password)
+  it("rejects invalid credentials", async () => {
+    await expect(authService.login(testEmail, "WrongPassword123!")).rejects.toBeInstanceOf(AuthError)
+  })
 
-    const isValid = await verifyPassword(password, hashedPassword)
-    expect(isValid).toBe(true)
+  it("refreshes sessions using a valid refresh token", async () => {
+    const initial = await authService.login(testEmail, testPassword)
+    const refreshed = await authService.refreshSession(initial.tokens.refreshToken)
 
-    const isInvalid = await verifyPassword("WrongPassword", hashedPassword)
-    expect(isInvalid).toBe(false)
+    expect(refreshed.user.id).toBe(initial.user.id)
+    expect(refreshed.tokens.accessToken).not.toBe(initial.tokens.accessToken)
+    expect(refreshed.tokens.refreshToken).not.toBe(initial.tokens.refreshToken)
+  })
+
+  it("evaluates permissions based on role hierarchy", () => {
+    expect(authService.hasPermission("super_admin", ["admin"])).toBe(true)
+    expect(authService.hasPermission("teacher", ["teacher"])).toBe(true)
+    expect(authService.hasPermission("teacher", ["admin"])).toBe(false)
   })
 })

@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 
 import { requireAuth, isHttpError } from "@/lib/api-auth"
 import { getReportCard, submitSubjectAssessment } from "@/lib/report-card-service"
-import { hasPermission } from "@/lib/security"
+import { authService } from "@/lib/auth-service"
 import { marksSchema } from "@/lib/validation-schemas"
 
 export const runtime = "nodejs"
@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
   try {
     const actor = requireAuth(request)
 
-    if (!hasPermission(actor.role, ["Teacher", "Admin", "Super Admin"])) {
+    if (!authService.hasPermission(actor.role, ["teacher", "admin", "super_admin"])) {
       return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 })
     }
 
@@ -65,11 +65,11 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    if (actor.role === "Student" && actor.userId !== studentId) {
+    if (actor.role === "student" && actor.userId !== studentId) {
       return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 })
     }
 
-    if (actor.role !== "Student" && !hasPermission(actor.role, ["Teacher", "Admin", "Super Admin"])) {
+    if (actor.role !== "student" && !authService.hasPermission(actor.role, ["teacher", "admin", "super_admin"])) {
       return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 })
     }
 

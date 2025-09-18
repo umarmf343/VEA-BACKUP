@@ -232,6 +232,7 @@ export interface UserRecord {
   createdAt: string
   updatedAt?: string
   passwordHash?: string
+  lastLogin?: string
   studentIds?: string[]
   subjects?: string[]
 }
@@ -394,12 +395,24 @@ const DEFAULT_DATA: Collections = {
   ],
   users: [
     {
+      id: "usr-super-admin-1",
+      name: "Super Administrator",
+      email: "superadmin@vea.edu.ng",
+      role: "super_admin",
+      status: "active",
+      createdAt: "2024-01-09T08:00:00.000Z",
+      passwordHash:
+        "c1d2e3f405162738c1d2e3f405162738:b33b024944a9ab998b9632b87ce1a15eb7553756a8a3d53e52390777d0bc87578081127eb7fd55f894d03b4ef49158bfc928f22869a5832dc8d63930cc5244bc",
+    },
+    {
       id: "usr-admin-1",
       name: "Victoria Umeh",
       email: "admin@vea.edu.ng",
       role: "admin",
       status: "active",
       createdAt: "2024-01-10T08:00:00.000Z",
+      passwordHash:
+        "a1b2c3d4e5f60718a1b2c3d4e5f60718:7c91938b80e242c80d68a5e1d21883c753c5180bab223dc2cb15ad097aba84e6abcb75d4d9f4812fd7d86a432719c490637005f23a9c3fe326bec418b94ab98c",
     },
     {
       id: "usr-teacher-1",
@@ -1536,6 +1549,7 @@ export class DatabaseManager {
       createdAt: new Date().toISOString(),
       updatedAt: user.updatedAt,
       passwordHash: user.passwordHash,
+      lastLogin: user.lastLogin,
       studentIds: user.studentIds?.slice(),
       subjects: user.subjects?.slice(),
     }
