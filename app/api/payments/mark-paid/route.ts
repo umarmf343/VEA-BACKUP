@@ -23,8 +23,17 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ payment })
   } catch (error) {
-    console.error("Payment settlement error:", error)
     const message = error instanceof Error ? error.message : "Failed to mark payment as paid"
-    return NextResponse.json({ error: message }, { status: 400 })
+
+    if (error instanceof SyntaxError) {
+      return NextResponse.json({ error: "Invalid JSON payload" }, { status: 400 })
+    }
+
+    if (message === "Payment not found") {
+      return NextResponse.json({ error: message }, { status: 404 })
+    }
+
+    console.error("Payment settlement error:", error)
+    return NextResponse.json({ error: "Failed to mark payment as paid" }, { status: 500 })
   }
 }
