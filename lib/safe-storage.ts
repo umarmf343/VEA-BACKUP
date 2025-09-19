@@ -1,33 +1,38 @@
-import { readPersistentState, writePersistentState } from "./persistent-state"
-
 interface SafeStorage {
   getItem: (key: string) => string | null
   setItem: (key: string, value: string) => void
   removeItem: (key: string) => void
 }
 
-const SERVER_STORE_KEY = "app.serverStorage"
-
 type ServerStore = Record<string, string>
+
+const GLOBAL_STORE_KEY = "__vea_server_storage__" as const
+
+type GlobalWithServerStore = typeof globalThis & {
+  [GLOBAL_STORE_KEY]?: ServerStore
+}
 
 let serverStoreCache: ServerStore | null = null
 
 function getServerStore() {
-  if (!serverStoreCache) {
-    serverStoreCache = readPersistentState<ServerStore>(SERVER_STORE_KEY, () => ({}))
+  if (typeof window !== "undefined") {
+    throw new Error("Server store is not available in the browser")
   }
-  return serverStoreCache
-}
 
-function persistServerStore() {
-  if (serverStoreCache) {
-    writePersistentState(SERVER_STORE_KEY, serverStoreCache)
+  if (!serverStoreCache) {
+    const globalRef = globalThis as GlobalWithServerStore
+    if (!globalRef[GLOBAL_STORE_KEY]) {
+      globalRef[GLOBAL_STORE_KEY] = {}
+    }
+    serverStoreCache = globalRef[GLOBAL_STORE_KEY]!
   }
+
+  return serverStoreCache
 }
 
 const createSafeStorage = (): SafeStorage => {
   if (typeof window === "undefined") {
-    // Server-side: persist using the shared JSON store
+    // Server-side: persist using a shared in-memory store scoped to the Node process
     return {
       getItem: (key: string) => {
         const store = getServerStore()
@@ -39,7 +44,6 @@ const createSafeStorage = (): SafeStorage => {
           return
         }
         store[key] = value
-        persistServerStore()
       },
       removeItem: (key: string) => {
         const store = getServerStore()
@@ -47,7 +51,6 @@ const createSafeStorage = (): SafeStorage => {
           return
         }
         delete store[key]
-        persistServerStore()
       },
     }
   }
