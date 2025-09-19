@@ -1,289 +1,176 @@
-# VEA 2025 Portal - Complete Installation Guide for cPanel
+# VEA 2025 Portal – cPanel Installation Guide
 
-## Prerequisites
-- cPanel hosting account with Node.js support
-- SSH access (which you have)
-- Domain: portal2.victoryeducationalacademy.com.ng
-
-## Step 1: Create Database
-
-### 1.1 Login to cPanel
-1. Go to your cPanel dashboard
-2. Find "MySQL Databases" section
-
-### 1.2 Create Database
-1. Click "MySQL Databases"
-2. Under "Create New Database":
-   - Database Name: `vea_portal_2025`
-   - Click "Create Database"
-3. Note down the full database name (usually: `yourusername_vea_portal_2025`)
-
-### 1.3 Create Database User
-1. Under "MySQL Users" section:
-   - Username: `vea_admin`
-   - Password: Create a strong password (save this!)
-   - Click "Create User"
-
-### 1.4 Add User to Database
-1. Under "Add User to Database":
-   - Select your user: `vea_admin`
-   - Select your database: `vea_portal_2025`
-   - Click "Add"
-2. Grant ALL PRIVILEGES
-3. Click "Make Changes"
-
-## Step 2: Prepare Environment Variables
-
-### 2.1 Create .env.local file
-Create a file named `.env.local` with the following content:
-
-\`\`\`env
-# Database Configuration
-DATABASE_URL="mysql://yourusername_vea_admin:YOUR_PASSWORD@localhost:3306/yourusername_vea_portal_2025"
-
-# JWT Secret (generate a random 32-character string)
-JWT_SECRET="your-super-secret-jwt-key-32-chars"
-
-# Paystack Configuration (get from Paystack dashboard)
-NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY="pk_test_your_paystack_public_key"
-PAYSTACK_SECRET_KEY="sk_test_your_paystack_secret_key"
-
-# App Configuration
-NEXT_PUBLIC_APP_URL="https://portal2.victoryeducationalacademy.com.ng"
-NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL="https://portal2.victoryeducationalacademy.com.ng"
-
-# Email Configuration (optional - for notifications)
-SMTP_HOST="your-smtp-host"
-SMTP_PORT="587"
-SMTP_USER="your-email@domain.com"
-SMTP_PASS="your-email-password"
-\`\`\`
-
-**Important**: Replace the placeholders with your actual values:
-- `yourusername` with your cPanel username
-- `YOUR_PASSWORD` with the database password you created
-- Get Paystack keys from your Paystack dashboard
-
-## Step 3: Upload Files to Server
-
-### 3.1 Using File Manager (Easier for beginners)
-1. In cPanel, open "File Manager"
-2. Navigate to `public_html/portal2.victoryeducationalacademy.com.ng`
-3. Upload all project files (you can zip them first, then extract)
-4. Make sure `.env.local` is in the root directory
-
-### 3.2 Using SSH (Alternative method)
-\`\`\`bash
-# Connect to your server
-ssh yourusername@your-server-ip
-
-# Navigate to the directory
-cd public_html/portal2.victoryeducationalacademy.com.ng
-
-# Upload files using scp or git clone
-# If using git:
-git clone https://github.com/your-repo/vea-2025-portal.git .
-\`\`\`
-
-## Step 4: Install Dependencies
-
-### 4.1 Check Node.js Version
-\`\`\`bash
-# SSH into your server
-ssh yourusername@your-server-ip
-
-# Check Node.js version (should be 18+ for Next.js 14)
-node --version
-npm --version
-\`\`\`
-
-### 4.2 Install Node.js (if needed)
-If Node.js is not installed or version is too old:
-1. In cPanel, look for "Node.js" or "Node.js Selector"
-2. Select Node.js version 18 or higher
-3. Set the startup file to `server.js`
-
-### 4.3 Install Project Dependencies
-\`\`\`bash
-# Navigate to your project directory
-cd public_html/portal2.victoryeducationalacademy.com.ng
-
-# Install dependencies
-npm install
-
-# If you get permission errors, try:
-npm install --unsafe-perm=true --allow-root
-\`\`\`
-
-## Step 5: Database Setup
-
-### 5.1 Create Database Tables
-\`\`\`bash
-# Run database migrations (if you have them)
-npm run db:migrate
-
-# Or manually create tables using phpMyAdmin
-\`\`\`
-
-### 5.2 Using phpMyAdmin (Manual Setup)
-1. In cPanel, open "phpMyAdmin"
-2. Select your database: `yourusername_vea_portal_2025`
-3. Run this SQL to create basic tables:
-
-\`\`\`sql
--- Users table
-CREATE TABLE users (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    email VARCHAR(255) UNIQUE NOT NULL,
-    password VARCHAR(255) NOT NULL,
-    name VARCHAR(255) NOT NULL,
-    role ENUM('super_admin', 'admin', 'teacher', 'student', 'parent', 'librarian', 'accountant') NOT NULL,
-    class VARCHAR(100),
-    admission_number VARCHAR(50),
-    phone VARCHAR(20),
-    address TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);
-
--- Student marks table
-CREATE TABLE student_marks (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    student_id INT NOT NULL,
-    subject VARCHAR(100) NOT NULL,
-    term VARCHAR(20) NOT NULL,
-    session VARCHAR(20) NOT NULL,
-    ca1 DECIMAL(5,2) DEFAULT 0,
-    ca2 DECIMAL(5,2) DEFAULT 0,
-    assignment DECIMAL(5,2) DEFAULT 0,
-    exam DECIMAL(5,2) DEFAULT 0,
-    total DECIMAL(5,2) DEFAULT 0,
-    grade VARCHAR(2),
-    teacher_remarks TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (student_id) REFERENCES users(id)
-);
-
--- Insert default Super Admin user
-INSERT INTO users (email, password, name, role) VALUES 
-('admin@victoryeducationalacademy.com.ng', '$2b$10$hashedpassword', 'Super Administrator', 'super_admin');
-\`\`\`
-
-## Step 6: Build and Deploy
-
-### 6.1 Build the Application
-\`\`\`bash
-# Build the Next.js application
-npm run build
-
-# If build fails due to memory issues:
-NODE_OPTIONS="--max-old-space-size=4096" npm run build
-\`\`\`
-
-### 6.2 Start the Application
-\`\`\`bash
-# Start in production mode
-npm start
-
-# Or use PM2 for process management (recommended)
-npm install -g pm2
-pm2 start npm --name "vea-portal" -- start
-pm2 save
-pm2 startup
-\`\`\`
-
-## Step 7: Configure Domain and SSL
-
-### 7.1 Domain Configuration
-1. In cPanel, go to "Subdomains"
-2. Create subdomain: `portal2`
-3. Point it to: `public_html/portal2.victoryeducationalacademy.com.ng`
-
-### 7.2 SSL Certificate
-1. In cPanel, go to "SSL/TLS"
-2. Enable "Let's Encrypt" for your subdomain
-3. Force HTTPS redirect
-
-## Step 8: Test the Installation
-
-### 8.1 Access the Portal
-1. Visit: `https://portal2.victoryeducationalacademy.com.ng`
-2. You should see the login page
-
-### 8.2 Default Login Credentials
-- **Super Admin**: 
-  - Email: `admin@victoryeducationalacademy.com.ng`
-  - Password: `admin123` (change this immediately!)
-
-### 8.3 Test Basic Functionality
-1. Login as Super Admin
-2. Create test users for each role
-3. Test payment integration
-4. Test report card generation
-
-## Step 9: Security and Maintenance
-
-### 9.1 Change Default Passwords
-1. Login as Super Admin
-2. Go to User Management
-3. Change the default admin password
-
-### 9.2 Regular Backups
-1. Set up automatic database backups in cPanel
-2. Backup uploaded files (student photos, documents)
-
-### 9.3 Monitor Logs
-\`\`\`bash
-# Check application logs
-pm2 logs vea-portal
-
-# Check error logs
-tail -f /path/to/error.log
-\`\`\`
-
-## Troubleshooting
-
-### Common Issues:
-
-1. **"Cannot connect to database"**
-   - Check DATABASE_URL in .env.local
-   - Verify database credentials
-   - Ensure database exists
-
-2. **"Module not found" errors**
-   - Run `npm install` again
-   - Check Node.js version compatibility
-
-3. **"Permission denied" errors**
-   - Check file permissions: `chmod 755 -R .`
-   - Check ownership: `chown -R username:username .`
-
-4. **Application not starting**
-   - Check if port 3000 is available
-   - Use PM2 for better process management
-
-5. **Paystack integration not working**
-   - Verify API keys in .env.local
-   - Check if domain is whitelisted in Paystack
-
-### Getting Help:
-- Check application logs: `pm2 logs vea-portal`
-- Contact your hosting provider for server-specific issues
-- Ensure all environment variables are correctly set
-
-## Next Steps After Installation:
-1. Configure school branding (logo, signature)
-2. Set up user accounts for teachers, students, parents
-3. Configure classes and subjects
-4. Set up payment plans
-5. Test report card generation
-6. Train staff on system usage
+This guide walks you through deploying the VEA 2025 Portal on a shared hosting plan that provides cPanel with Node.js and SSH support. Follow each section in order. Every command assumes that your cPanel username is `cpaneluser` and that the site will live at `portal2.victoryeducationalacademy.com.ng`. Replace these values with your actual details while you work.
 
 ---
 
-**Important Security Notes:**
-- Always use HTTPS in production
-- Regularly update dependencies: `npm update`
-- Monitor for security vulnerabilities
-- Keep database credentials secure
-- Regular backups are essential
+## 1. Before you begin
+
+| Requirement | Notes |
+| --- | --- |
+| **cPanel account** | Must include the *Setup Node.js App* feature (sometimes called Application Manager) and SSH access. |
+| **Domain or subdomain** | Point the DNS record for `portal2.victoryeducationalacademy.com.ng` to the hosting server. |
+| **Local copy of the project** | Download the contents of this repository and compress them into a `.zip`, or be ready to clone the repo from Git. |
+| **Database credentials** | Decide on the MySQL database name, username, and a strong password. |
+| **Paystack keys & JWT secret** | Obtain production Paystack keys and generate a 32+ character JWT secret. |
+| **Node.js 18+** | The portal targets Next.js 14 and requires Node.js 18 or newer. |
+
+> 💡 **Tip:** Keep a notepad with the database name, username, password, and any environment variables you create. You will need them several times.
+
+---
+
+## 2. Create the application folders
+
+1. Sign in to cPanel and open **File Manager**.
+2. Inside `public_html`, create a folder named `portal2` (or the directory that matches your subdomain’s document root).
+3. Upload the zipped project (or prepare to clone it into this directory over SSH).
+
+---
+
+## 3. Provision the MySQL database
+
+1. In cPanel search for **MySQL® Databases** and open it.
+2. Under **Create New Database**, enter `vea_portal_2025` and click **Create Database**. Note the full database name – cPanel prefixes it with your account name (for example `cpaneluser_vea_portal_2025`).
+3. Scroll to **MySQL Users** → **Add New User**. Create `vea_admin` with a strong password. The full username will be `cpaneluser_vea_admin`.
+4. In **Add User to Database**, pair `cpaneluser_vea_admin` with `cpaneluser_vea_portal_2025`, click **Add**, and grant **ALL PRIVILEGES**.
+
+You can verify the credentials later from **phpMyAdmin** by logging in with the same database user.
+
+---
+
+## 4. Prepare environment variables
+
+The portal expects a `.env.local` file at the application root. You can upload it with the rest of the project or create it directly on the server.
+
+```env
+DATABASE_URL="mysql://cpaneluser_vea_admin:YOUR_DB_PASSWORD@localhost:3306/cpaneluser_vea_portal_2025"
+JWT_SECRET="your-32-character-or-longer-secret"
+NEXT_PUBLIC_APP_URL="https://portal2.victoryeducationalacademy.com.ng"
+NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY="pk_live_your_paystack_public_key"
+PAYSTACK_SECRET_KEY="sk_live_your_paystack_secret_key"
+NEXT_TELEMETRY_DISABLED="1"
+```
+
+* Replace `YOUR_DB_PASSWORD` with the password you set in step 3.
+* Add any other service credentials (SMTP, analytics, etc.) that your instance requires following the same `NAME="value"` pattern.
+
+If you prefer to manage secrets through cPanel’s **Setup Node.js App** interface, you may skip uploading `.env.local` and instead add each variable in the application manager later. The application reads from either source.
+
+---
+
+## 5. Upload the project to the server
+
+### Option A – File Manager (no SSH)
+1. Compress the project on your local machine (excluding `node_modules`).
+2. In **File Manager**, open `public_html/portal2` and upload the archive.
+3. Use the **Extract** action to unpack the archive contents so that files such as `package.json`, `server.js`, and the `app/` directory sit directly inside `public_html/portal2`.
+4. Upload `.env.local` into the same directory (use **Settings → Show Hidden Files** if you do not see it).
+
+### Option B – SSH / Git (recommended for updates)
+1. Connect through SSH: `ssh cpaneluser@your-server-hostname`.
+2. Navigate to the target folder: `cd ~/public_html/portal2`.
+3. Clone the repository or upload files with `scp`. Example: `git clone https://github.com/your-org/vea-2025-portal.git .`
+4. Create the `.env.local` file with `nano .env.local` and paste the variables from section 4.
+
+---
+
+## 6. Install dependencies and build the app
+
+1. From SSH or the cPanel Terminal, run the following commands in `~/public_html/portal2`:
+   ```bash
+   cd ~/public_html/portal2
+   npm install
+   npm run build
+   ```
+   *If you encounter permission errors, prepend commands with `NODE_ENV=production` or rerun with `npm install --legacy-peer-deps`.*
+2. Confirm that `.next/`, `node_modules/`, and other build artifacts were created inside the directory.
+
+> ⚠️ Avoid running `npm install` from your local machine and uploading `node_modules`. Always install on the server so native bindings compile correctly for the host environment.
+
+---
+
+## 7. Configure the Node.js application in cPanel
+
+1. Open **Setup Node.js App** (or **Application Manager**) in cPanel.
+2. Click **Create Application** and supply the following values:
+   | Field | Value |
+   | --- | --- |
+   | **Application Mode** | Production |
+   | **Node.js Version** | 18.x or 20.x (whichever is available and ≥18) |
+   | **Application Root** | `portal2` |
+   | **Application URL** | `https://portal2.victoryeducationalacademy.com.ng` (pick the subdomain you created) |
+   | **Application Startup File** | `server.js` |
+3. After creation, use the **Actions** panel to run `npm install` (if you did not already run it in step 6) and set environment variables if you chose not to use `.env.local`.
+4. Set the **PORT** environment variable to `3000` if the interface does not auto-fill it. The included `server.js` binds to `process.env.PORT || 3000`.
+5. Click **Restart Application**. The status indicator should turn green. The manager will proxy traffic from your chosen URL to the Node.js service running on the internal port.
+
+---
+
+## 8. Initialise the database schema
+
+1. Launch **phpMyAdmin** from cPanel and select the database `cpaneluser_vea_portal_2025`.
+2. Open the **Import** tab.
+3. Choose the file `scripts/database-schema.sql` from this repository and upload it. (If you uploaded via SSH, the file already exists in the project directory; download it to your computer first or copy its contents into phpMyAdmin’s SQL window.)
+4. Execute the import. This creates all required tables and inserts a default Super Admin user with email `admin@victoryeducationalacademy.com.ng`.
+5. If you prefer to use different default accounts, edit the SQL script before importing or run your own `INSERT` statements afterward.
+
+---
+
+## 9. Point the domain and enable HTTPS
+
+1. In cPanel open **Subdomains** and ensure `portal2` points to `public_html/portal2`.
+2. Visit **SSL/TLS Status** (or **Let’s Encrypt™ SSL**) and issue a certificate for the subdomain.
+3. Back in **Domains**, enable the “Force HTTPS Redirect” toggle for `portal2.victoryeducationalacademy.com.ng`.
+
+Once DNS propagates, browsing to `https://portal2.victoryeducationalacademy.com.ng` should load the portal served from the Node.js application.
+
+---
+
+## 10. Validate the installation
+
+1. Navigate to the site URL in a browser. The login page should appear.
+2. Sign in with the seeded Super Admin account:
+   - **Email:** `admin@victoryeducationalacademy.com.ng`
+   - **Password:** `admin123`
+3. Confirm that dashboards, report cards, and payments pages load without console errors.
+4. Trigger a Paystack test payment (if you are still on test keys) to verify webhook callbacks and status updates.
+
+---
+
+## 11. Operating the application
+
+| Task | How to perform it |
+| --- | --- |
+| **View logs** | From SSH: `cd ~/public_html/portal2 && tail -f ~/.cpanel/logs/nodejs/nodejs-portal2.log` or use the **Application Manager → Logs** button. |
+| **Restart the service** | Click **Restart Application** in the Node.js App interface or run `touch tmp/restart.txt` from SSH. |
+| **Update code** | Pull new commits via Git or upload a fresh archive, then rerun `npm install` (if dependencies changed) and `npm run build`, followed by an application restart. |
+| **Change environment variables** | Edit `.env.local` and restart, or modify variables in the Node.js App interface and click **Restart Application**. |
+| **Database backups** | Schedule backups through cPanel’s **Backup Wizard** or export the database via phpMyAdmin regularly. |
+
+---
+
+## 12. Troubleshooting checklist
+
+| Symptom | Fix |
+| --- | --- |
+| *502 Bad Gateway or blank page* | Ensure the Node.js app is running in **Setup Node.js App** and that the startup file is `server.js`. Restart the app. |
+| *Database connection errors* | Recheck `DATABASE_URL`, confirm the user has privileges, and verify the database name includes the cPanel prefix. |
+| *Build fails with memory errors* | Rerun with `NODE_OPTIONS="--max-old-space-size=4096" npm run build`. |
+| *Missing styles or assets* | Confirm the `public/` folder and `.next/static/` directory exist and were uploaded correctly. |
+| *Paystack requests rejected* | Make sure the correct live/test keys are set and that the webhook URL configured in Paystack points to your domain. |
+| *Cannot write to disk* | From SSH run `chmod 755 -R ~/public_html/portal2` and ensure files are owned by your cPanel user. |
+
+If problems persist, consult the raw Node.js logs in `/home/cpaneluser/.cpanel/logs/nodejs/` or contact your hosting provider to confirm Node.js is enabled on the account.
+
+---
+
+## 13. Next steps after deployment
+
+1. Change the default Super Admin password immediately.
+2. Configure school branding (logos, email templates, SMS/SMTP settings).
+3. Create real staff, parent, and student accounts.
+4. Set up classes, subjects, fee structures, and approval workflows.
+5. Schedule routine backups for both the database and any uploaded documents.
+6. Monitor dependency updates and security advisories, applying patches during maintenance windows.
+
+With these steps completed, the VEA 2025 Portal will be fully operational on your cPanel hosting environment.
