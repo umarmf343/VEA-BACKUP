@@ -101,7 +101,7 @@ export default function StudentDashboard({ initialData = null }: StudentDashboar
       )}
 
       {/* Metrics */}
-      {!data && !error ? (
+      {!data ? (
         <div className="grid gap-3 sm:grid-cols-3">
           <SkeletonCard />
           <SkeletonCard />
@@ -110,11 +110,11 @@ export default function StudentDashboard({ initialData = null }: StudentDashboar
       ) : (
         <div className="space-y-2">
           <div className="grid gap-3 sm:grid-cols-3">
-            <MetricCard title="Assignments Due" value={data?.assignmentsDue ?? 0} />
-            <MetricCard title="Notices" value={data?.notices ?? 0} />
-            <MetricCard title="Payments Pending" value={data?.paymentsPending ?? 0} />
+            <MetricCard title="Assignments Due" value={data.assignmentsDue} />
+            <MetricCard title="Notices" value={data.notices} />
+            <MetricCard title="Payments Pending" value={data.paymentsPending} />
           </div>
-          {data?.lastSync ? (
+          {data.lastSync ? (
             <p className="text-xs text-muted-foreground">Last synced {formatLastSync(data.lastSync)}</p>
           ) : null}
         </div>

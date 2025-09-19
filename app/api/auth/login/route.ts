@@ -195,7 +195,6 @@ export async function POST(request: Request) {
     })
   } catch (error) {
     console.error("Login error:", error)
-    registerIpAttempt(ip, now)
     return NextResponse.json({ error: "Unable to process login" }, { status: 500 })
   }
 }
