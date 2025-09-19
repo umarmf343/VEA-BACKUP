@@ -1,5 +1,14 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "@jest/globals"
 import { LOCKOUT_DURATION_MS, MAX_FAILED_ATTEMPTS } from "@/lib/auth-service"
+import { LOGIN_THROTTLE_LIMITS, resetLoginThrottling } from "@/lib/login-throttle"
+import {
+  PAYMENT_INITIALIZE_RATE_LIMIT,
+  resetInitializeRateLimit,
+} from "@/lib/payments-initialize-rate-limit"
+import {
+  PAYMENT_VERIFY_RATE_LIMIT,
+  resetVerifyRateLimit,
+} from "@/lib/payments-verify-rate-limit"
 import { resetPaymentsStore } from "@/lib/payments-store"
 
 jest.mock("next/server", () => ({
@@ -31,16 +40,8 @@ const { getUserByEmail } = jest.requireMock("@/lib/database") as {
 }
 
 let loginPost: (req: Request) => Promise<Response>
-let resetLoginThrottling: () => void
-let LOGIN_THROTTLE_LIMITS: { ip: { max: number }; username: { max: number } }
-
 let initializePost: (req: Request) => Promise<Response>
-let resetInitializeRateLimit: () => void
-let PAYMENT_INITIALIZE_RATE_LIMIT: { windowMs: number; max: number }
-
 let verifyPost: (req: Request) => Promise<Response>
-let resetVerifyRateLimit: () => void
-let PAYMENT_VERIFY_RATE_LIMIT: { windowMs: number; max: number }
 
 const advanceTime = (ms: number) => {
   const current = Date.now()
@@ -89,18 +90,12 @@ beforeAll(async () => {
 
   const loginModule = await import("@/app/api/auth/login/route")
   loginPost = loginModule.POST as (req: Request) => Promise<Response>
-  resetLoginThrottling = loginModule.resetLoginThrottling
-  LOGIN_THROTTLE_LIMITS = loginModule.LOGIN_THROTTLE_LIMITS
 
   const initializeModule = await import("@/app/api/payments/initialize/route")
   initializePost = initializeModule.POST as (req: Request) => Promise<Response>
-  resetInitializeRateLimit = initializeModule.resetInitializeRateLimit
-  PAYMENT_INITIALIZE_RATE_LIMIT = initializeModule.PAYMENT_INITIALIZE_RATE_LIMIT
 
   const verifyModule = await import("@/app/api/payments/verify/route")
   verifyPost = verifyModule.POST as (req: Request) => Promise<Response>
-  resetVerifyRateLimit = verifyModule.resetVerifyRateLimit
-  PAYMENT_VERIFY_RATE_LIMIT = verifyModule.PAYMENT_VERIFY_RATE_LIMIT
 })
 
 afterAll(() => {
