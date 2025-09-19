@@ -1,44 +1,21 @@
-interface SafeStorage {
-  getItem: (key: string) => string | null
-  setItem: (key: string, value: string) => void
-  removeItem: (key: string) => void
+import type { SafeStorage } from "./safe-storage.types"
+
+let safeStorageImpl: SafeStorage
+let safeSessionStorageImpl: SafeStorage
+
+if (typeof window === "undefined") {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { serverSafeStorage, serverSafeSessionStorage } = require("./safe-storage.server") as typeof import("./safe-storage.server")
+  safeStorageImpl = serverSafeStorage
+  safeSessionStorageImpl = serverSafeSessionStorage
+} else {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { clientSafeStorage, clientSafeSessionStorage } = require("./safe-storage.client") as typeof import("./safe-storage.client")
+  safeStorageImpl = clientSafeStorage
+  safeSessionStorageImpl = clientSafeSessionStorage
 }
 
-const createSafeStorage = (): SafeStorage => {
-  if (typeof window === "undefined") {
-    // Server-side: return no-op functions
-    return {
-      getItem: () => null,
-      setItem: () => {},
-      removeItem: () => {},
-    }
-  }
+export const safeStorage = safeStorageImpl
+export const safeSessionStorage = safeSessionStorageImpl
 
-  // Client-side: return actual localStorage
-  return {
-    getItem: (key: string) => localStorage.getItem(key),
-    setItem: (key: string, value: string) => localStorage.setItem(key, value),
-    removeItem: (key: string) => localStorage.removeItem(key),
-  }
-}
-
-export const safeStorage = createSafeStorage()
-
-// Helper for session storage
-const createSafeSessionStorage = (): SafeStorage => {
-  if (typeof window === "undefined") {
-    return {
-      getItem: () => null,
-      setItem: () => {},
-      removeItem: () => {},
-    }
-  }
-
-  return {
-    getItem: (key: string) => sessionStorage.getItem(key),
-    setItem: (key: string, value: string) => sessionStorage.setItem(key, value),
-    removeItem: (key: string) => sessionStorage.removeItem(key),
-  }
-}
-
-export const safeSessionStorage = createSafeSessionStorage()
+export type { SafeStorage }

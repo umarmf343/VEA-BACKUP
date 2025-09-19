@@ -4,7 +4,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Download, PrinterIcon as Print } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
-import { safeStorage } from "@/lib/safe-storage"
+import { clientSafeStorage as safeStorage } from "@/lib/safe-storage.client"
 import type { ReportCardResponse } from "@/lib/report-card-types"
 
 export function EnhancedReportCard({ data }: { data?: ReportCardResponse }) {

@@ -1,4 +1,4 @@
-import { safeStorage } from "@/lib/safe-storage"
+import { serverSafeStorage as safeStorage } from "@/lib/safe-storage.server"
 
 type ReportCardSubject = {
   name: string

@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Download, Check, X, Calendar, Clock, User, BookOpen } from "lucide-react"
-import { safeStorage } from "@/lib/safe-storage"
+import { clientSafeStorage as safeStorage } from "@/lib/safe-storage.client"
 import type { ReportCardStatus, ReportCardResponse } from "@/lib/report-card-types"
 
 interface StudentReportCard {

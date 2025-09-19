@@ -8,6 +8,52 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 
+const RAW_ALLOWED_ORIGINS = process.env.CORS_ALLOWED_ORIGINS ?? "";
+const DEFAULT_ORIGINS = [
+  process.env.NEXT_PUBLIC_APP_URL,
+  process.env.APP_URL,
+  process.env.API_BASE_URL,
+  process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined,
+  process.env.NODE_ENV !== "production" ? "http://localhost:3000" : undefined,
+];
+
+const parsedOrigins = RAW_ALLOWED_ORIGINS.split(/[,\s]+/)
+  .map((value) => value.trim())
+  .filter(Boolean);
+
+const ORIGINS_SET = (() => {
+  const set = new Set<string>();
+  for (const value of [...parsedOrigins, ...DEFAULT_ORIGINS]) {
+    if (!value) continue;
+    if (value === "*") {
+      return new Set<string>(["*"]);
+    }
+    set.add(value);
+  }
+  return set;
+})();
+
+const ALLOW_ALL_ORIGINS = ORIGINS_SET.has("*");
+const FIRST_ALLOWED_ORIGIN = (() => {
+  if (ALLOW_ALL_ORIGINS) {
+    return "*";
+  }
+  const iterator = ORIGINS_SET.values().next();
+  return iterator.done ? null : iterator.value;
+})();
+
+const ALLOW_CREDENTIALS = process.env.CORS_ALLOW_CREDENTIALS === "true";
+
+function resolveAllowedOrigin(requestOrigin: string | null): string | null {
+  if (ALLOW_ALL_ORIGINS) {
+    return requestOrigin ?? "*";
+  }
+  if (!requestOrigin) {
+    return FIRST_ALLOWED_ORIGIN;
+  }
+  return ORIGINS_SET.has(requestOrigin) ? requestOrigin : null;
+}
+
 export function middleware(req: NextRequest) {
   const res = NextResponse.next();
 
@@ -21,17 +67,33 @@ export function middleware(req: NextRequest) {
   const isApi = pathname.startsWith("/api/");
 
   if (isApi) {
-    const origin = req.headers.get("origin") ?? "*";
+    const requestOrigin = req.headers.get("origin");
+    const allowedOrigin = resolveAllowedOrigin(requestOrigin);
+
+    if (!allowedOrigin) {
+      if (req.method === "OPTIONS") {
+        return new NextResponse(null, { status: 403 });
+      }
+      return NextResponse.json({ error: "Origin not allowed" }, { status: 403 });
+    }
+
     const allowHeaders =
       req.headers.get("access-control-request-headers") ?? "Content-Type, Authorization";
 
-    const corsHeaders = {
-      "Access-Control-Allow-Origin": origin,
-      Vary: "Origin",
+    const corsHeaders: Record<string, string> = {
+      "Access-Control-Allow-Origin": allowedOrigin,
       "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
       "Access-Control-Allow-Headers": allowHeaders,
       "Access-Control-Max-Age": "86400",
     };
+
+    if (allowedOrigin !== "*") {
+      corsHeaders.Vary = "Origin";
+    }
+
+    if (ALLOW_CREDENTIALS && allowedOrigin !== "*") {
+      corsHeaders["Access-Control-Allow-Credentials"] = "true";
+    }
 
     // Preflight
     if (req.method === "OPTIONS") {

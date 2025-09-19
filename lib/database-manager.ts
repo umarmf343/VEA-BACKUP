@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto"
 
-import { safeStorage } from "./safe-storage"
+import { serverSafeStorage as safeStorage } from "./safe-storage.server"
 
 export type PaymentStatus = "pending" | "paid" | "failed"
 export type StudentPaymentStatus = "paid" | "pending" | "overdue"

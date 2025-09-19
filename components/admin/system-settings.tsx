@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Settings, Save, RotateCcw } from "lucide-react"
-import { safeStorage } from "@/lib/safe-storage"
+import { clientSafeStorage as safeStorage } from "@/lib/safe-storage.client"
 import { useNotification } from "@/hooks/use-notification"
 
 export function SystemSettings() {

@@ -5,7 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { CheckCircle, XCircle, Loader2 } from "lucide-react"
-import { safeStorage } from "@/lib/safe-storage"
+import { clientSafeStorage as safeStorage } from "@/lib/safe-storage.client"
 import type { Viewport } from "next"
 
 export const viewport: Viewport = {

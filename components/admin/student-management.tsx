@@ -22,7 +22,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Users, Plus, Search, Edit, Trash2, Eye, User, Calendar, CreditCard, Loader2 } from "lucide-react"
 import { dbManager } from "@/lib/database-manager"
-import { safeStorage } from "@/lib/safe-storage"
+import { clientSafeStorage as safeStorage } from "@/lib/safe-storage.client"
 
 interface Student {
   id: string

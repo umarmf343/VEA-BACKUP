@@ -1,6 +1,9 @@
 import { randomBytes, scrypt as scryptCallback, scryptSync, timingSafeEqual } from "crypto"
 import { promisify } from "util"
 
+import { deleteSession, getSessionRecord, saveSession, sweepExpiredSessions } from "./session-store"
+import { readPersistentState, writePersistentState } from "./persistent-state"
+
 export type UserRole = "super_admin" | "admin" | "teacher" | "student" | "parent" | "librarian" | "accountant"
 
 export interface User {
@@ -51,9 +54,16 @@ const defaultUsers: StoredUser[] = [
   },
 ]
 
-const userStore: StoredUser[] = defaultUsers.map((user) => ({ ...user }))
+const USER_STORE_KEY = "auth.users"
 
-const activeSessions = new Map<string, { userId: string; expiresAt: number }>()
+const seedDefaultUsers = () => defaultUsers.map((user) => ({ ...user }))
+
+const loadUserStore = (): StoredUser[] =>
+  readPersistentState<StoredUser[]>(USER_STORE_KEY, seedDefaultUsers)
+
+const persistUserStore = (users: StoredUser[]) => {
+  writePersistentState(USER_STORE_KEY, users)
+}
 
 const normalizeEmail = (email: string) => email.trim().toLowerCase()
 
@@ -62,13 +72,13 @@ const sanitizeUser = (user: StoredUser): User => {
   return { ...safeUser }
 }
 
-const findUserByEmail = (email: string): StoredUser | undefined => {
+const findUserByEmail = (email: string, store: StoredUser[] = loadUserStore()): StoredUser | undefined => {
   const normalizedEmail = normalizeEmail(email)
-  return userStore.find((user) => normalizeEmail(user.email) === normalizedEmail)
+  return store.find((user) => normalizeEmail(user.email) === normalizedEmail)
 }
 
-const findUserById = (id: string): StoredUser | undefined => {
-  return userStore.find((user) => user.id === id)
+const findUserById = (id: string, store: StoredUser[] = loadUserStore()): StoredUser | undefined => {
+  return store.find((user) => user.id === id)
 }
 
 const verifyPasswordSync = (password: string, storedHash: string): boolean => {
@@ -93,22 +103,26 @@ const verifyPasswordSync = (password: string, storedHash: string): boolean => {
 }
 
 const createSession = (userId: string) => {
+  const now = Date.now()
+  sweepExpiredSessions(now)
   const token = randomBytes(32).toString("hex")
-  const expiresAt = Date.now() + SESSION_DURATION_MS
+  const expiresAt = now + SESSION_DURATION_MS
 
-  activeSessions.set(token, { userId, expiresAt })
+  saveSession(token, { userId, expiresAt })
 
   return { token, expiresAt: new Date(expiresAt).toISOString() }
 }
 
 const getSession = (token: string) => {
-  const session = activeSessions.get(token)
+  const now = Date.now()
+  sweepExpiredSessions(now)
+  const session = getSessionRecord(token)
   if (!session) {
     return null
   }
 
-  if (session.expiresAt <= Date.now()) {
-    activeSessions.delete(token)
+  if (session.expiresAt <= now) {
+    deleteSession(token)
     return null
   }
 
@@ -126,7 +140,8 @@ export const verifyPassword = async (password: string, storedHash: string): Prom
 }
 
 export const validateUser = (email: string, password: string): User | null => {
-  const userRecord = findUserByEmail(email)
+  const userStore = loadUserStore()
+  const userRecord = findUserByEmail(email, userStore)
   if (!userRecord || !userRecord.isActive) {
     return null
   }
@@ -137,13 +152,15 @@ export const validateUser = (email: string, password: string): User | null => {
   }
 
   userRecord.lastLogin = new Date().toISOString()
+  persistUserStore(userStore)
   return sanitizeUser(userRecord)
 }
 
 export const auth = {
   login: async (email: string, password: string): Promise<AuthSession | null> => {
     try {
-      const userRecord = findUserByEmail(email)
+      const userStore = loadUserStore()
+      const userRecord = findUserByEmail(email, userStore)
       if (!userRecord || !userRecord.isActive) {
         return null
       }
@@ -154,6 +171,7 @@ export const auth = {
       }
 
       userRecord.lastLogin = new Date().toISOString()
+      persistUserStore(userStore)
 
       const { token, expiresAt } = createSession(userRecord.id)
 
@@ -175,7 +193,8 @@ export const auth = {
         return null
       }
 
-      const userRecord = findUserById(session.userId)
+      const userStore = loadUserStore()
+      const userRecord = findUserById(session.userId, userStore)
       if (!userRecord || !userRecord.isActive) {
         return null
       }
@@ -209,7 +228,8 @@ export const auth = {
     metadata?: Record<string, any>
   }): Promise<User | null> => {
     try {
-      const existingUser = findUserByEmail(userData.email)
+      const userStore = loadUserStore()
+      const existingUser = userStore.find((user) => normalizeEmail(user.email) === normalizeEmail(userData.email))
       if (existingUser) {
         throw new Error("User already exists")
       }
@@ -225,7 +245,7 @@ export const auth = {
         metadata: userData.metadata,
       }
 
-      userStore.push(newUser)
+      persistUserStore([...userStore, newUser])
 
       return sanitizeUser(newUser)
     } catch (error) {
@@ -236,7 +256,15 @@ export const auth = {
 
   logout: async (token: string): Promise<boolean> => {
     try {
-      return activeSessions.delete(token)
+      if (!token) {
+        return false
+      }
+      const session = getSessionRecord(token)
+      if (!session) {
+        return false
+      }
+      deleteSession(token)
+      return true
     } catch (error) {
       console.error("Logout error:", error)
       return false

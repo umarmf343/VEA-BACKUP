@@ -1,4 +1,4 @@
-import { safeStorage } from "@/lib/safe-storage"
+import { clientSafeStorage as safeStorage } from "@/lib/safe-storage.client"
 
 export interface MessageNotification {
   id: string
