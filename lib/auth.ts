@@ -1,6 +1,8 @@
 import { randomBytes, scrypt as scryptCallback, scryptSync, timingSafeEqual } from "crypto"
 import { promisify } from "util"
 
+import { deleteSession, getSessionRecord, saveSession, sweepExpiredSessions } from "./session-store"
+
 export type UserRole = "super_admin" | "admin" | "teacher" | "student" | "parent" | "librarian" | "accountant"
 
 export interface User {
@@ -53,8 +55,6 @@ const defaultUsers: StoredUser[] = [
 
 const userStore: StoredUser[] = defaultUsers.map((user) => ({ ...user }))
 
-const activeSessions = new Map<string, { userId: string; expiresAt: number }>()
-
 const normalizeEmail = (email: string) => email.trim().toLowerCase()
 
 const sanitizeUser = (user: StoredUser): User => {
@@ -93,22 +93,26 @@ const verifyPasswordSync = (password: string, storedHash: string): boolean => {
 }
 
 const createSession = (userId: string) => {
+  const now = Date.now()
+  sweepExpiredSessions(now)
   const token = randomBytes(32).toString("hex")
-  const expiresAt = Date.now() + SESSION_DURATION_MS
+  const expiresAt = now + SESSION_DURATION_MS
 
-  activeSessions.set(token, { userId, expiresAt })
+  saveSession(token, { userId, expiresAt })
 
   return { token, expiresAt: new Date(expiresAt).toISOString() }
 }
 
 const getSession = (token: string) => {
-  const session = activeSessions.get(token)
+  const now = Date.now()
+  sweepExpiredSessions(now)
+  const session = getSessionRecord(token)
   if (!session) {
     return null
   }
 
-  if (session.expiresAt <= Date.now()) {
-    activeSessions.delete(token)
+  if (session.expiresAt <= now) {
+    deleteSession(token)
     return null
   }
 
@@ -236,7 +240,15 @@ export const auth = {
 
   logout: async (token: string): Promise<boolean> => {
     try {
-      return activeSessions.delete(token)
+      if (!token) {
+        return false
+      }
+      const session = getSessionRecord(token)
+      if (!session) {
+        return false
+      }
+      deleteSession(token)
+      return true
     } catch (error) {
       console.error("Logout error:", error)
       return false

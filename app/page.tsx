@@ -2,20 +2,12 @@
 // Purpose: Stable, accessible landing page without hydration warnings.
 // Fixes: Loading flicker, server/client markup mismatch, inconsistent spacing.
 // Notes:
-// - Marked as a Client Component because it uses useEffect/useState.
+// - Renders as a Server Component to avoid unnecessary client JavaScript.
 // - Uses the HSL token classes defined in app/globals.css.
 
-"use client";
-
-import { useEffect, useState } from "react";
 import Link from "next/link";
 
 export default function Page() {
-  // Avoids hydration mismatches by rendering only after mount.
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
-  if (!mounted) return null;
-
   return (
     <section className="space-y-4">
       <header className="space-y-1">
