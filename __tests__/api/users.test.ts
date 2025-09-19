@@ -3,6 +3,7 @@
  */
 
 import { NextRequest } from "next/server"
+import type { RequestInit as NextRequestInit } from "next/dist/server/web/spec-extension/request"
 
 import { GET, POST, PUT } from "@/app/api/users/route"
 
@@ -33,8 +34,15 @@ const { __mockDb: mockDb } = jest.requireMock("@/lib/database-manager") as {
   __mockDb: DbMock
 }
 
-function createRequest(url: string, init?: RequestInit) {
-  return new NextRequest(url, init)
+function createRequest(url: string, init?: NextRequestInit) {
+  if (!init) {
+    return new NextRequest(url)
+  }
+
+  const normalizedInit: NextRequestInit =
+    "signal" in init && init.signal === null ? { ...init, signal: undefined } : init
+
+  return new NextRequest(url, normalizedInit)
 }
 
 describe("/api/users route", () => {

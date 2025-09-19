@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto"
 
 import { readPersistentState, resetPersistentState, writePersistentState } from "./persistent-state"
-import type { ReportCardRecord, ReportCardStatus, SubjectScore } from "./report-card-types"
+import type { ApprovalHistory, ReportCardRecord, ReportCardStatus, SubjectScore } from "./report-card-types"
 
 const STORE_KEY = "vea-report-cards"
 
@@ -48,9 +48,9 @@ function gradeFromTotal(total: number): string {
   return "F"
 }
 
-function buildSubject(subject: SubjectScore): SubjectScore
-function buildSubject(subject: Partial<SubjectScore> & { name?: unknown; teacherId?: unknown }): SubjectScore
-function buildSubject(subject: Partial<SubjectScore> & { name?: unknown; teacherId?: unknown }): SubjectScore {
+type SubjectSeed = Partial<SubjectScore> & { name?: unknown; teacherId?: unknown; teacherName?: unknown }
+
+function buildSubject(subject: SubjectSeed): SubjectScore {
   const ca1 = Number(subject.ca1 ?? 0)
   const ca2 = Number(subject.ca2 ?? 0)
   const assignment = Number(subject.assignment ?? 0)
@@ -85,7 +85,12 @@ function computeAggregates(subjects: SubjectScore[]) {
   return { totalObtained, totalObtainable, average }
 }
 
-function sanitizeRecord(record: Partial<ReportCardRecord>): ReportCardRecord {
+type ReportCardSeed = Omit<Partial<ReportCardRecord>, "subjects" | "approvals"> & {
+  subjects?: SubjectSeed[]
+  approvals?: Array<Partial<ApprovalHistory>>
+}
+
+function sanitizeRecord(record: ReportCardSeed): ReportCardRecord {
   const subjects = Array.isArray(record.subjects) ? record.subjects.map((subject) => buildSubject(subject)) : []
   const aggregates = computeAggregates(subjects)
 
@@ -157,22 +162,29 @@ function sanitizeRecord(record: Partial<ReportCardRecord>): ReportCardRecord {
         : undefined,
     approvals: Array.isArray(record.approvals)
       ? record.approvals
-          .map((approval) => ({
-            status: approval?.status === "revoked" ? "revoked" : "approved",
-            actorId:
-              typeof approval?.actorId === "string" && approval.actorId.trim().length > 0
+          .reduce<ApprovalHistory[]>((acc, approval) => {
+            if (!approval) {
+              return acc
+            }
+
+            const status: ApprovalHistory["status"] = approval.status === "revoked" ? "revoked" : "approved"
+            const actorId =
+              typeof approval.actorId === "string" && approval.actorId.trim().length > 0
                 ? approval.actorId
-                : "system",
-            actorRole:
-              typeof approval?.actorRole === "string" && approval.actorRole.trim().length > 0
+                : "system"
+            const actorRole =
+              typeof approval.actorRole === "string" && approval.actorRole.trim().length > 0
                 ? approval.actorRole
-                : "Admin",
-            message:
-              typeof approval?.message === "string" && approval.message.trim().length > 0
+                : "Admin"
+            const message =
+              typeof approval.message === "string" && approval.message.trim().length > 0
                 ? approval.message
-                : undefined,
-            timestamp: ensureIsoDate(approval?.timestamp) || new Date().toISOString(),
-          }))
+                : undefined
+            const timestamp = ensureIsoDate(approval.timestamp) || new Date().toISOString()
+
+            acc.push({ status, actorId, actorRole, message, timestamp })
+            return acc
+          }, [])
           .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
       : [],
     metadata,
