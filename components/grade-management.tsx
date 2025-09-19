@@ -312,7 +312,7 @@ export default function GradeManagement() {
               </div>
 
               <div>
-                <Label>Teacher's Remarks</Label>
+                <Label>Teacher&apos;s Remarks</Label>
                 <Textarea
                   value={editingStudent.teacherRemarks}
                   onChange={(e) =>
@@ -321,7 +321,7 @@ export default function GradeManagement() {
                       teacherRemarks: e.target.value,
                     })
                   }
-                  placeholder="Enter teacher's remarks..."
+                  placeholder="Enter teacher&apos;s remarks..."
                 />
               </div>
 

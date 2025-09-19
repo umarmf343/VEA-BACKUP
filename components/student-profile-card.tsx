@@ -29,7 +29,7 @@ export function StudentProfileCard({ student }: StudentProfileProps) {
           <User className="h-5 w-5" />
           Student Profile
         </CardTitle>
-        <CardDescription>Your child's information and current status</CardDescription>
+        <CardDescription>Your child&apos;s information and current status</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex items-center gap-4">

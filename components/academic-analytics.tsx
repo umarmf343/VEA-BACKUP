@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -48,26 +48,7 @@ export function AcademicAnalytics({ userRole }: AcademicAnalyticsProps) {
     excellenceRate: 0,
   })
 
-  useEffect(() => {
-    loadAcademicData()
-
-    // Real-time listeners for data updates
-    const handleDataUpdate = () => {
-      loadAcademicData()
-    }
-
-    dbManager.on("academicDataUpdated", handleDataUpdate)
-    dbManager.on("reportCardUpdated", handleDataUpdate)
-    dbManager.on("marksUpdated", handleDataUpdate)
-
-    return () => {
-      dbManager.off("academicDataUpdated", handleDataUpdate)
-      dbManager.off("reportCardUpdated", handleDataUpdate)
-      dbManager.off("marksUpdated", handleDataUpdate)
-    }
-  }, [selectedTerm, selectedClass])
-
-  const loadAcademicData = async () => {
+  const loadAcademicData = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
@@ -94,7 +75,26 @@ export function AcademicAnalytics({ userRole }: AcademicAnalyticsProps) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [selectedTerm, selectedClass])
+
+  useEffect(() => {
+    loadAcademicData()
+
+    // Real-time listeners for data updates
+    const handleDataUpdate = () => {
+      loadAcademicData()
+    }
+
+    dbManager.on("academicDataUpdated", handleDataUpdate)
+    dbManager.on("reportCardUpdated", handleDataUpdate)
+    dbManager.on("marksUpdated", handleDataUpdate)
+
+    return () => {
+      dbManager.off("academicDataUpdated", handleDataUpdate)
+      dbManager.off("reportCardUpdated", handleDataUpdate)
+      dbManager.off("marksUpdated", handleDataUpdate)
+    }
+  }, [loadAcademicData])
 
   const handlePrint = () => {
     window.print()
