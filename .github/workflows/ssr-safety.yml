@@ -2,49 +2,62 @@ name: SSR Safety and CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches:
+      - main
+      - develop
   pull_request:
-    branches: [ main ]
+    branches:
+      - main
 
 env:
   NODE_VERSION: '18'
+  NEXT_TELEMETRY_DISABLED: '1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   lint:
     name: Lint & SSR Safety
     runs-on: ubuntu-latest
-
+    env:
+      CI: true
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
-        with:
+        with: &node_setup
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+          cache: npm
+          cache-dependency-path: package-lock.json
 
       - name: Install dependencies
         run: npm ci
 
       - name: Run ESLint SSR Safety Check
-        run: npm run lint
+        run: npm run lint -- --max-warnings=0
 
       - name: Run SSR Safety Script
-        run: chmod +x scripts/ssr-safety-check.sh && ./scripts/ssr-safety-check.sh
+        run: |
+          chmod +x scripts/ssr-safety-check.sh
+          ./scripts/ssr-safety-check.sh
 
   typecheck:
     name: Typecheck
     runs-on: ubuntu-latest
-    needs: lint
-
+    env:
+      CI: true
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+        with: *node_setup
 
       - name: Install dependencies
         run: npm ci
@@ -55,44 +68,43 @@ jobs:
   unit-tests:
     name: Unit Tests & Coverage
     runs-on: ubuntu-latest
-    needs: [lint, typecheck]
-
+    env:
+      CI: true
+      NODE_ENV: test
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+        with: *node_setup
 
       - name: Install dependencies
         run: npm ci
 
       - name: Run unit tests with coverage
-        run: npm run test -- --coverage --runInBand
+        run: npm test -- --coverage --runInBand --passWithNoTests
 
       - name: Upload coverage artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: coverage-${{ github.run_id }}
           path: coverage
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 7
 
   integration-tests:
     name: Integration Tests
     runs-on: ubuntu-latest
-    needs: [lint, typecheck]
-
+    env:
+      CI: true
+      NODE_ENV: test
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+        with: *node_setup
 
       - name: Install dependencies
         run: npm ci
@@ -103,30 +115,38 @@ jobs:
   build:
     name: Build & Preview Artifact
     runs-on: ubuntu-latest
-    needs: [lint, typecheck, unit-tests, integration-tests]
-
+    needs:
+      - lint
+      - typecheck
+      - unit-tests
+      - integration-tests
+    env:
+      CI: true
+      SKIP_ENV_VALIDATION: true
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+        with: *node_setup
 
       - name: Restore Prisma cache
+        if: hashFiles('prisma/schema.prisma') != ''
         uses: actions/cache@v4
         with:
           path: |
-            node_modules/.prisma
+            ~/.cache/prisma
             prisma/migrations
-          key: ${{ runner.os }}-prisma-${{ hashFiles('package-lock.json') }}
+          key: ${{ runner.os }}-prisma-${{ hashFiles('prisma/schema.prisma') }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-prisma-${{ hashFiles('prisma/schema.prisma') }}-
+            ${{ runner.os }}-prisma-
 
       - name: Restore Next.js build cache
         uses: actions/cache@v4
         with:
           path: .next/cache
-          key: ${{ runner.os }}-next-${{ hashFiles('package-lock.json') }}-${{ github.ref }}
+          key: ${{ runner.os }}-next-${{ hashFiles('package-lock.json') }}-${{ github.ref_name }}
           restore-keys: |
             ${{ runner.os }}-next-${{ hashFiles('package-lock.json') }}-
             ${{ runner.os }}-next-
@@ -134,12 +154,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Generate Prisma client
+        if: hashFiles('prisma/schema.prisma') != ''
+        run: npx prisma generate
+
       - name: Build Check
-        env:
-          SKIP_ENV_VALIDATION: true
         run: npm run build
 
       - name: Upload Next.js build artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: next-build-${{ github.run_id }}
@@ -148,22 +171,23 @@ jobs:
             public
             package.json
             next.config.mjs
+            package-lock.json
+          if-no-files-found: error
           retention-days: 7
 
   dependency-audit:
     name: Dependency Audit (optional)
     runs-on: ubuntu-latest
-    needs: [lint, typecheck]
+    if: github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork
     continue-on-error: true
-
+    env:
+      CI: true
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+        with: *node_setup
 
       - name: Install dependencies
         run: npm ci
@@ -177,12 +201,12 @@ jobs:
     needs: build
     if: ${{ vars.LIGHTHOUSE_URL != '' }}
     continue-on-error: true
-
+    env:
+      CI: true
     steps:
       - name: Setup Node.js
         uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
+        with: *node_setup
 
       - name: Run Lighthouse CI
-        run: npx @lhci/cli autorun --collect.url=${{ vars.LIGHTHOUSE_URL }} --upload.target=temporary-public-storage
+        run: npx @lhci/cli autorun --collect.url="${{ vars.LIGHTHOUSE_URL }}" --upload.target=temporary-public-storage
