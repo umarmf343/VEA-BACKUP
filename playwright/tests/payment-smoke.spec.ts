@@ -6,22 +6,23 @@ test.describe("Payment initiation", () => {
 
     await expect(page.getByRole("heading", { name: /payments & balances/i })).toBeVisible()
 
-    const studentSelect = page.getByLabelText(/student/i)
+    const studentSelect = page.getByLabel(/student/i)
     await studentSelect.waitFor()
 
-    const options = await studentSelect.elementHandle()
-    if (options) {
-      const value = await options.evaluate((el) => (el as HTMLSelectElement).value)
-      if (!value) {
-        await studentSelect.selectOption({ index: 1 }).catch(async () => {
-          await studentSelect.selectOption({ index: 0 })
-        })
-      }
+    const currentValue = await studentSelect.evaluate((node) => {
+      const element = node as HTMLSelectElement
+      return element.value
+    })
+
+    if (!currentValue) {
+      await studentSelect.selectOption({ index: 1 }).catch(async () => {
+        await studentSelect.selectOption({ index: 0 })
+      })
     }
 
-    const amountInput = page.getByLabelText(/amount/i)
+    const amountInput = page.getByLabel(/amount/i)
     await amountInput.fill("5500")
-    await page.getByLabelText(/method/i).selectOption({ index: 0 })
+    await page.getByLabel(/method/i).selectOption({ index: 0 })
     await page.getByRole("button", { name: /log payment/i }).click()
 
     await expect(page.getByText(/payment reference/i)).toBeVisible()

@@ -46,14 +46,6 @@ export function AdminApprovalDashboard() {
   const [filterClass, setFilterClass] = useState<string>("all")
   const [isLoading, setIsLoading] = useState(false)
 
-  useEffect(() => {
-    loadReportCards()
-    const savedDeadline = safeStorage.getItem("reportCardDeadline")
-    if (savedDeadline) {
-      setSubmissionDeadline(savedDeadline)
-    }
-  }, [loadReportCards])
-
   const loadReportCards = useCallback(async () => {
     try {
       setIsLoading(true)
@@ -83,6 +75,14 @@ export function AdminApprovalDashboard() {
       setIsLoading(false)
     }
   }, [])
+
+  useEffect(() => {
+    void loadReportCards()
+    const savedDeadline = safeStorage.getItem("reportCardDeadline")
+    if (savedDeadline) {
+      setSubmissionDeadline(savedDeadline)
+    }
+  }, [loadReportCards])
 
   useEffect(() => {
     let filtered = reportCards
