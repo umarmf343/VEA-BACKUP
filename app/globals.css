@@ -1,101 +1,141 @@
 /* app/globals.css
    Purpose: Global design tokens + base styles that stabilize UI/UX.
    Notes:
-   - Includes Tailwind directives.
-   - Defines HSL tokens for light/dark themes.
-   - Adds robust focus-visible ring and sensible defaults.
-   - Provides utility classes (.bg-background, .text-foreground, etc.)
+   - Provides Tailwind layers and semantic tokens.
+   - Tokens mirror the values consumed in tailwind.config.ts.
+   - Keeps sensible defaults for typography, focus rings, and layout helpers.
 */
 
-/* --- Tailwind layers --- */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* --- Color tokens (HSL) --- */
 :root {
-  /* Surfaces + text */
   --background: 0 0% 100%;
-  --foreground: 222 47% 11%;
+  --foreground: 222.2 47.4% 11.2%;
   --card: 0 0% 100%;
-  --card-foreground: 222 47% 11%;
-
-  /* Muted/secondary surfaces + text */
-  --muted: 210 40% 96%;
-  --muted-foreground: 215 16% 47%;
-
-  /* Borders/inputs/focus */
-  --border: 214 32% 91%;
-  --input: 214 32% 91%;
-  --ring: 221 83% 53%;
-
-  /* Brand (primary) */
-  --brand: 221 83% 53%;
-
-  /* Font variable injected by next/font (Inter) */
-  /* --font-inter is provided by app/layout.tsx via next/font */
+  --card-foreground: 222.2 47.4% 11.2%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222.2 47.4% 11.2%;
+  --primary: 221.2 83.2% 53.3%;
+  --primary-foreground: 210 40% 98%;
+  --secondary: 210 40% 96.1%;
+  --secondary-foreground: 222.2 47.4% 11.2%;
+  --muted: 210 40% 96.1%;
+  --muted-foreground: 215.4 16.3% 46.9%;
+  --accent: 210 40% 96.1%;
+  --accent-foreground: 222.2 47.4% 11.2%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 210 40% 98%;
+  --border: 214.3 31.8% 91.4%;
+  --input: 214.3 31.8% 91.4%;
+  --ring: 221.2 83.2% 53.3%;
+  --chart-1: 12 76% 61%;
+  --chart-2: 173 58% 39%;
+  --chart-3: 197 37% 24%;
+  --chart-4: 43 74% 66%;
+  --chart-5: 27 87% 67%;
+  --radius: 0.625rem;
+  --brand: 221.2 83.2% 53.3%;
+  --sidebar: 210 40% 96.1%;
+  --sidebar-foreground: 222.2 47.4% 11.2%;
+  --sidebar-primary: 221.2 83.2% 53.3%;
+  --sidebar-primary-foreground: 210 40% 98%;
+  --sidebar-accent: 210 40% 96.1%;
+  --sidebar-accent-foreground: 222.2 47.4% 11.2%;
+  --sidebar-border: 214.3 31.8% 91.4%;
+  --sidebar-ring: 221.2 83.2% 53.3%;
 }
 
-/* Prefer dark auto when user requests it */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: 222 27% 10%;
-    --foreground: 210 20% 98%;
-
-    --card: 222 27% 11%;
-    --card-foreground: 210 20% 98%;
-
-    --muted: 222 16% 16%;
-    --muted-foreground: 215 16% 75%;
-
-    --border: 222 16% 20%;
-    --input: 222 16% 20%;
-
-    --ring: 221 83% 66%;
-    --brand: 221 83% 66%;
-  }
+.dark {
+  --background: 222.2 47.4% 11.2%;
+  --foreground: 210 40% 98%;
+  --card: 222.2 47.4% 11.2%;
+  --card-foreground: 210 40% 98%;
+  --popover: 222.2 47.4% 11.2%;
+  --popover-foreground: 210 40% 98%;
+  --primary: 221.2 83.2% 53.3%;
+  --primary-foreground: 210 40% 98%;
+  --secondary: 217.2 32.6% 17.5%;
+  --secondary-foreground: 210 40% 98%;
+  --muted: 217.2 32.6% 17.5%;
+  --muted-foreground: 215 20.2% 65.1%;
+  --accent: 217.2 32.6% 17.5%;
+  --accent-foreground: 210 40% 98%;
+  --destructive: 0 62.8% 30.6%;
+  --destructive-foreground: 210 40% 98%;
+  --border: 217.2 32.6% 17.5%;
+  --input: 217.2 32.6% 17.5%;
+  --ring: 221.2 83.2% 53.3%;
+  --chart-1: 12 76% 61%;
+  --chart-2: 173 58% 39%;
+  --chart-3: 197 37% 24%;
+  --chart-4: 43 74% 66%;
+  --chart-5: 27 87% 67%;
+  --sidebar: 222.2 47.4% 11.2%;
+  --sidebar-foreground: 210 40% 98%;
+  --sidebar-primary: 221.2 83.2% 53.3%;
+  --sidebar-primary-foreground: 210 40% 98%;
+  --sidebar-accent: 217.2 32.6% 17.5%;
+  --sidebar-accent-foreground: 210 40% 98%;
+  --sidebar-border: 217.2 32.6% 17.5%;
+  --sidebar-ring: 221.2 83.2% 53.3%;
 }
 
-/* --- Semantic utility classes bound to tokens --- */
-.bg-background { background-color: hsl(var(--background)); }
-.text-foreground { color: hsl(var(--foreground)); }
-.bg-card { background-color: hsl(var(--card)); }
-.text-muted-foreground { color: hsl(var(--muted-foreground)); }
-.border { border-color: hsl(var(--border)); }
+* {
+  box-sizing: border-box;
+}
 
-/* --- Base resets + quality-of-life tweaks --- */
-* { box-sizing: border-box; }
-html, body { height: 100%; }
-html { color-scheme: light dark; scroll-behavior: smooth; }
+html,
+body {
+  height: 100%;
+}
+
+html {
+  color-scheme: light dark;
+  scroll-behavior: smooth;
+}
 
 body {
-  /* Inter font variable comes from next/font (see app/layout.tsx) */
-  font-family: var(--font-inter), system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
+  font-family: var(--font-inter), system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
   background-color: hsl(var(--background));
   color: hsl(var(--foreground));
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Accessible focus outline */
 :focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px hsl(var(--ring) / 0.95);
   border-radius: 0.5rem;
 }
 
-/* Reduce layout shift for media */
-img, svg, video, canvas { display: block; max-width: 100%; height: auto; }
+img,
+svg,
+video,
+canvas {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
 
-/* Selection color for readability */
 ::selection {
   background: hsl(var(--brand) / 0.25);
 }
 
-/* Motion safety */
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
 }
 
-/* Layout helper (optional) */
-.container { max-width: 72rem; margin-inline: auto; padding-inline: 1rem; }
+.container {
+  max-width: 72rem;
+  margin-inline: auto;
+  padding-inline: 1rem;
+}
