@@ -107,7 +107,7 @@ export function StudentNotificationCenter() {
           : notifications.length === 0
           ? (
               <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
-                You're all caught up!
+                You&apos;re all caught up!
               </p>
             )
           : notifications.map((notification) => (

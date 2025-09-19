@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -48,26 +48,7 @@ export function FinancialReports({ userRole }: FinancialReportsProps) {
     onTimePaymentRate: 0,
   })
 
-  useEffect(() => {
-    loadFinancialData()
-
-    // Real-time listeners for data updates
-    const handleFinancialUpdate = () => {
-      loadFinancialData()
-    }
-
-    dbManager.on("financialDataUpdated", handleFinancialUpdate)
-    dbManager.on("paymentProcessed", handleFinancialUpdate)
-    dbManager.on("expenseAdded", handleFinancialUpdate)
-
-    return () => {
-      dbManager.off("financialDataUpdated", handleFinancialUpdate)
-      dbManager.off("paymentProcessed", handleFinancialUpdate)
-      dbManager.off("expenseAdded", handleFinancialUpdate)
-    }
-  }, [selectedPeriod, selectedClass])
-
-  const loadFinancialData = async () => {
+  const loadFinancialData = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
@@ -108,7 +89,26 @@ export function FinancialReports({ userRole }: FinancialReportsProps) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [selectedPeriod, selectedClass])
+
+  useEffect(() => {
+    loadFinancialData()
+
+    // Real-time listeners for data updates
+    const handleFinancialUpdate = () => {
+      loadFinancialData()
+    }
+
+    dbManager.on("financialDataUpdated", handleFinancialUpdate)
+    dbManager.on("paymentProcessed", handleFinancialUpdate)
+    dbManager.on("expenseAdded", handleFinancialUpdate)
+
+    return () => {
+      dbManager.off("financialDataUpdated", handleFinancialUpdate)
+      dbManager.off("paymentProcessed", handleFinancialUpdate)
+      dbManager.off("expenseAdded", handleFinancialUpdate)
+    }
+  }, [loadFinancialData])
 
   const COLORS = ["#2d682d", "#b29032", "#4ade80", "#f59e0b", "#ef4444", "#8b5cf6"]
 

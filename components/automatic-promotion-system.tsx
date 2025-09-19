@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -44,54 +44,7 @@ export function AutomaticPromotionSystem() {
   const [loading, setLoading] = useState(true)
   const { notifyError, notifySuccess } = useNotification()
 
-  useEffect(() => {
-    const loadClasses = async () => {
-      try {
-        const classData = await dbManager.getClasses()
-        setClasses(classData.map((c) => c.name))
-      } catch (error) {
-        console.error("Error loading classes:", error)
-        // Fallback to default classes
-        setClasses([
-          "JSS 1A",
-          "JSS 1B",
-          "JSS 2A",
-          "JSS 2B",
-          "JSS 3A",
-          "JSS 3B",
-          "SS 1A",
-          "SS 1B",
-          "SS 2A",
-          "SS 2B",
-          "SS 3A",
-          "SS 3B",
-        ])
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    loadClasses()
-
-    // Real-time listeners for data changes
-    const handleDataUpdate = () => {
-      if (selectedClass && showResults) {
-        handlePromotionAnalysis()
-      }
-    }
-
-    dbManager.on("studentUpdated", handleDataUpdate)
-    dbManager.on("marksUpdated", handleDataUpdate)
-    dbManager.on("attendanceUpdated", handleDataUpdate)
-
-    return () => {
-      dbManager.off("studentUpdated", handleDataUpdate)
-      dbManager.off("marksUpdated", handleDataUpdate)
-      dbManager.off("attendanceUpdated", handleDataUpdate)
-    }
-  }, [selectedClass, showResults])
-
-  const handlePromotionAnalysis = async () => {
+  const handlePromotionAnalysis = useCallback(async () => {
     if (!selectedClass) return
 
     setIsProcessing(true)
@@ -176,7 +129,54 @@ export function AutomaticPromotionSystem() {
     } finally {
       setIsProcessing(false)
     }
-  }
+  }, [selectedClass, promotionCriteria, notifyError])
+
+  useEffect(() => {
+    const loadClasses = async () => {
+      try {
+        const classData = await dbManager.getClasses()
+        setClasses(classData.map((c) => c.name))
+      } catch (error) {
+        console.error("Error loading classes:", error)
+        // Fallback to default classes
+        setClasses([
+          "JSS 1A",
+          "JSS 1B",
+          "JSS 2A",
+          "JSS 2B",
+          "JSS 3A",
+          "JSS 3B",
+          "SS 1A",
+          "SS 1B",
+          "SS 2A",
+          "SS 2B",
+          "SS 3A",
+          "SS 3B",
+        ])
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadClasses()
+
+    // Real-time listeners for data changes
+    const handleDataUpdate = () => {
+      if (selectedClass && showResults) {
+        handlePromotionAnalysis()
+      }
+    }
+
+    dbManager.on("studentUpdated", handleDataUpdate)
+    dbManager.on("marksUpdated", handleDataUpdate)
+    dbManager.on("attendanceUpdated", handleDataUpdate)
+
+    return () => {
+      dbManager.off("studentUpdated", handleDataUpdate)
+      dbManager.off("marksUpdated", handleDataUpdate)
+      dbManager.off("attendanceUpdated", handleDataUpdate)
+    }
+  }, [selectedClass, showResults, handlePromotionAnalysis])
 
   const handleBatchPromotion = async () => {
     const eligibleStudents = promotionResults.filter((s) => s.status === "eligible")

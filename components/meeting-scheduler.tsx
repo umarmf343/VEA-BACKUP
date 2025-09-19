@@ -94,7 +94,7 @@ export function MeetingScheduler({ currentUser }: MeetingSchedulerProps) {
       duration: 30,
       status: "confirmed",
       meetingType: "in-person",
-      location: "Teacher's Office",
+    location: "Teacher&apos;s Office",
       notes: "Discuss recent test performance and improvement strategies",
     },
     {
@@ -126,7 +126,7 @@ export function MeetingScheduler({ currentUser }: MeetingSchedulerProps) {
       duration: 60,
       status: "completed",
       meetingType: "in-person",
-      location: "Principal's Office",
+    location: "Principal&apos;s Office",
       notes: "Address recent behavioral issues and create action plan",
     },
   ])
@@ -431,7 +431,7 @@ export function MeetingScheduler({ currentUser }: MeetingSchedulerProps) {
               <CalendarIcon className="h-8 w-8 text-[#2d682d]" />
               <div>
                 <p className="text-2xl font-bold text-[#2d682d]">{todaysMeetings.length}</p>
-                <p className="text-sm text-gray-600">Today's Meetings</p>
+                <p className="text-sm text-gray-600">Today&apos;s Meetings</p>
               </div>
             </div>
           </CardContent>
@@ -520,7 +520,9 @@ export function MeetingScheduler({ currentUser }: MeetingSchedulerProps) {
                             <strong>Type:</strong> {meeting.meetingType}
                           </p>
                         </div>
-                        {meeting.notes && <p className="text-sm text-gray-700 mt-2 italic">"{meeting.notes}"</p>}
+                        {meeting.notes && (
+                          <p className="text-sm text-gray-700 mt-2 italic">&ldquo;{meeting.notes}&rdquo;</p>
+                        )}
                       </div>
                       <div className="flex flex-col sm:flex-row gap-2">
                         {meeting.status === "pending" && (
@@ -564,7 +566,7 @@ export function MeetingScheduler({ currentUser }: MeetingSchedulerProps) {
             <CardHeader>
               <CardTitle className="text-[#2d682d] flex items-center gap-2">
                 <Bell className="h-5 w-5" />
-                Today's Meetings
+                Today&apos;s Meetings
               </CardTitle>
               <CardDescription>Meetings scheduled for today</CardDescription>
             </CardHeader>

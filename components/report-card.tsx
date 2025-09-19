@@ -304,7 +304,7 @@ export function ReportCard({ data, isOpen, onClose }: ReportCardProps) {
                       <th className="text-center py-2 font-semibold text-[#2d682d]">Total (100)</th>
                       <th className="text-center py-2 font-semibold text-[#2d682d]">Grade</th>
                       <th className="text-center py-2 font-semibold text-[#2d682d]">Position</th>
-                      <th className="text-left py-2 font-semibold text-[#2d682d]">Teacher's Comment</th>
+                      <th className="text-left py-2 font-semibold text-[#2d682d]">Teacher&apos;s Comment</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -401,7 +401,7 @@ export function ReportCard({ data, isOpen, onClose }: ReportCardProps) {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
             <Card className="border-[#2d682d]/20">
               <CardHeader>
-                <h3 className="text-lg font-semibold text-[#2d682d]">Class Teacher's Comment</h3>
+                <h3 className="text-lg font-semibold text-[#2d682d]">Class Teacher&apos;s Comment</h3>
               </CardHeader>
               <CardContent>
                 <p className="text-sm text-gray-700 italic">{data.classTeacherComment}</p>
@@ -414,7 +414,7 @@ export function ReportCard({ data, isOpen, onClose }: ReportCardProps) {
 
             <Card className="border-[#b29032]/20">
               <CardHeader>
-                <h3 className="text-lg font-semibold text-[#b29032]">Principal's Comment</h3>
+                <h3 className="text-lg font-semibold text-[#b29032]">Principal&apos;s Comment</h3>
               </CardHeader>
               <CardContent>
                 <p className="text-sm text-gray-700 italic">{data.principalComment}</p>

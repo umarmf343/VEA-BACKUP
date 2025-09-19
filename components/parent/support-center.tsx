@@ -152,7 +152,7 @@ export function ParentSupportCenter() {
 
       <form onSubmit={submitThread} className="mt-6 rounded-2xl border bg-white p-5 shadow-sm">
         <h3 className="text-base font-semibold">Open a new request</h3>
-        <p className="mt-1 text-sm text-muted-foreground">We'll notify the relevant administrator immediately.</p>
+        <p className="mt-1 text-sm text-muted-foreground">We&apos;ll notify the relevant administrator immediately.</p>
 
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <label className="text-sm font-medium text-foreground">

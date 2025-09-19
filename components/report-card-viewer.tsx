@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
@@ -22,7 +22,7 @@ export function ReportCardViewer({ studentId, studentName, userRole, hasAccess }
   const [loading, setLoading] = useState(false)
   const { notifyError, notifyInfo, notifyWarning } = useNotification()
 
-  const loadReportCard = async () => {
+  const loadReportCard = useCallback(async () => {
     if (!hasAccess) {
       notifyWarning("Access denied", {
         description: "Complete payment or contact the administrator to view report cards.",
@@ -61,13 +61,13 @@ export function ReportCardViewer({ studentId, studentName, userRole, hasAccess }
     } finally {
       setLoading(false)
     }
-  }
+  }, [hasAccess, notifyWarning, studentId, selectedTerm, selectedSession, notifyInfo, notifyError])
 
   useEffect(() => {
     if (hasAccess) {
       loadReportCard()
     }
-  }, [selectedTerm, selectedSession, hasAccess])
+  }, [hasAccess, loadReportCard])
 
   if (!hasAccess) {
     return (

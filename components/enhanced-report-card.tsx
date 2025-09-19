@@ -1,5 +1,6 @@
 "use client"
 
+import Image from "next/image"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Download, PrinterIcon as Print } from "lucide-react"
@@ -101,10 +102,13 @@ export function EnhancedReportCard({ data }: { data?: ReportCardResponse }) {
             {/* Left: School Logo */}
             <div className="w-20 h-20 border-2 border-[#2d682d] print:border-black flex items-center justify-center bg-white">
               {schoolLogo ? (
-                <img
+                <Image
                   src={schoolLogo || "/placeholder.svg"}
                   alt="School Crest"
+                  width={80}
+                  height={80}
                   className="w-full h-full object-contain p-1"
+                  unoptimized
                 />
               ) : (
                 <div className="text-xs text-[#2d682d] print:text-gray-600 text-center font-bold">
@@ -128,10 +132,13 @@ export function EnhancedReportCard({ data }: { data?: ReportCardResponse }) {
             {/* Right: Student Photo placeholder */}
             <div className="w-20 h-24 border-2 border-[#2d682d] print:border-black flex items-center justify-center bg-white">
               {studentPhoto ? (
-                <img
+                <Image
                   src={studentPhoto || "/placeholder.svg"}
                   alt="Student Photo"
+                  width={80}
+                  height={96}
                   className="w-full h-full object-cover p-1"
+                  unoptimized
                 />
               ) : (
                 <div className="text-xs text-[#2d682d] print:text-gray-600 text-center font-bold">
@@ -253,7 +260,7 @@ export function EnhancedReportCard({ data }: { data?: ReportCardResponse }) {
                 <th className="border border-[#2d682d] print:border-black p-3 font-bold text-sm">EXAM</th>
                 <th className="border border-[#2d682d] print:border-black p-3 font-bold text-sm">TOTAL</th>
                 <th className="border border-[#2d682d] print:border-black p-3 font-bold text-sm">GRADE</th>
-                <th className="border border-[#2d682d] print:border-black p-3 font-bold text-sm">TEACHER'S REMARKS</th>
+                <th className="border border-[#2d682d] print:border-black p-3 font-bold text-sm">TEACHER&apos;S REMARKS</th>
               </tr>
             </thead>
             <tbody>
@@ -513,10 +520,13 @@ export function EnhancedReportCard({ data }: { data?: ReportCardResponse }) {
             <div className="text-center">
               {headmasterSignature ? (
                 <div className="mb-2">
-                  <img
+                  <Image
                     src={headmasterSignature || "/placeholder.svg"}
                     alt="Headmaster Signature"
+                    width={192}
+                    height={64}
                     className="h-16 w-48 object-contain mx-auto"
+                    unoptimized
                   />
                 </div>
               ) : (
