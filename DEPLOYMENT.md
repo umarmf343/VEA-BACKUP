@@ -85,11 +85,15 @@ For cPanel with Node.js support.
 Set these in your cPanel Node.js app environment:
 
 \`\`\`env
-# Database (Optional - uses localStorage by default)
-DATABASE_URL=mysql://username:password@localhost:3306/vea_portal
-
-# JWT Secret (Required for Node.js)
+# JWT Secret (Required and must be at least 32 characters)
 JWT_SECRET=your-super-secret-jwt-key-here
+
+# Persistent data directory (must be writable)
+APP_DATA_DIR=/home/username/vea-data
+
+# CORS configuration for API calls
+CORS_ALLOWED_ORIGINS=https://portal2.victoryeducationalacademy.com.ng
+CORS_ALLOW_CREDENTIALS=false
 
 # Paystack Integration
 PAYSTACK_SECRET_KEY=sk_test_your_paystack_secret_key
@@ -135,12 +139,11 @@ NEXT_TELEMETRY_DISABLED=1
 
 ## 💾 Data Persistence
 
-### Current System (localStorage)
-- All data stored in browser localStorage
-- Each user's data persists across sessions
-- Teachers can enter real student data immediately
-- Report cards generate with actual entered information
-- Works offline after initial load
+### Current System (File-backed JSON store)
+- Server-side state (sessions, rate limits, seeded datasets) is stored as JSON in `APP_DATA_DIR`
+- Configure `APP_DATA_DIR` to point at a persistent, backed-up location on your hosting platform
+- Browser localStorage is only used for client-side caches; server APIs read/write from the shared JSON store
+- Works in single-instance Node.js deployments such as cPanel applications
 
 ### Future Database Integration
 - MySQL database support ready

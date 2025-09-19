@@ -1,10 +1,11 @@
-import { randomBytes } from "crypto"
-
 import jwt, { SignOptions, VerifyOptions } from "jsonwebtoken"
 
 import { verifyPassword as verifyPasswordWithScrypt } from "./auth"
 
 const DEFAULT_JWT_TTL = "24h"
+
+const DEV_FALLBACK_SECRET = "development-secret-change-me-please-0123456789"
+const TEST_FALLBACK_SECRET = "test-secret-change-me-please-0123456789"
 
 let runtimeSecret: string | null = null
 
@@ -24,16 +25,24 @@ function resolveSecret() {
     return runtimeSecret
   }
 
-  const envSecret = process.env.JWT_SECRET
-  if (typeof envSecret === "string" && envSecret.trim().length >= 32) {
-    runtimeSecret = envSecret.trim()
+  const envSecret = process.env.JWT_SECRET?.trim()
+  if (envSecret && envSecret.length >= 32) {
+    runtimeSecret = envSecret
     return runtimeSecret
   }
 
-  runtimeSecret = randomBytes(48).toString("hex")
-  if (process.env.NODE_ENV !== "production") {
-    console.warn("JWT_SECRET is not configured. Generated an ephemeral secret for this runtime instance.")
+  const message =
+    "JWT_SECRET must be configured to a string with at least 32 characters. Set this in your environment for production deployments."
+
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(message)
   }
+
+  if (!runtimeSecret) {
+    console.warn(`${message} Using a fallback secret suitable for non-production use only.`)
+  }
+
+  runtimeSecret = process.env.NODE_ENV === "test" ? TEST_FALLBACK_SECRET : DEV_FALLBACK_SECRET
   return runtimeSecret
 }
 

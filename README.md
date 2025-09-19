@@ -85,7 +85,19 @@ PAYSTACK_SECRET_KEY=sk_live_your_paystack_secret_key
 NEXT_PUBLIC_APP_URL=https://portal2.victoryeducationalacademy.com.ng
 
 # Authentication
-JWT_SECRET=your_jwt_secret_key
+# Must be at least 32 characters. Required in production.
+JWT_SECRET=your_jwt_secret_key_that_is_at_least_32_characters
+
+# API Security
+# Comma separated list of allowed origins for API requests.
+CORS_ALLOWED_ORIGINS=https://portal2.victoryeducationalacademy.com.ng,https://admin.victoryeducationalacademy.com.ng
+# Enable only if you expect cookie-based requests from the allowed origins.
+CORS_ALLOW_CREDENTIALS=false
+
+# Persistence
+# Directory where JSON state (rate limits, sessions, cached data) is stored.
+# Point this to a writable location on your server or mounted volume.
+APP_DATA_DIR=/home/username/vea-data
 
 # Application
 NODE_ENV=production
