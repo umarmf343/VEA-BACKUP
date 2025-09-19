@@ -4,6 +4,7 @@ import { getRecentActivities } from "@/lib/super-admin-service";
 import type { Audience } from "@/lib/super-admin-service";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 const ALLOWED_ROLES: Audience[] = [
   "super-admin",
