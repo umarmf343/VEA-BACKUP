@@ -2,22 +2,15 @@
 // Purpose: Strong, consistent app shell (fonts, color tokens, header/footer).
 // Fixes: hydration warnings, inconsistent typography, and layout jitter.
 // Notes:
-// - Uses next/font to load Inter and expose the CSS variable `--font-inter`
-//   consumed by app/globals.css.
+// - Relies on a system font stack defined in app/globals.css to avoid network
+//   fetches during builds.
 // - Applies semantic classes bound to HSL tokens defined in globals.css.
 // - Keeps markup minimal and accessible.
 
 import type { Metadata } from "next";
 import "./globals.css";
-import { Inter } from "next/font/google";
 import type { ReactNode } from "react";
 import { Toaster } from "@/components/ui/sonner";
-
-const inter = Inter({
-  subsets: ["latin"],
-  display: "swap",
-  variable: "--font-inter",
-});
 
 export const metadata: Metadata = {
   title: "VEA Portal",
@@ -28,7 +21,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className={inter.variable} suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning>
       <body className="min-h-dvh bg-background text-foreground antialiased">
         {/* App Header */}
         <header
